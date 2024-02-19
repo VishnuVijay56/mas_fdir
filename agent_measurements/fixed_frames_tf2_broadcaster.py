@@ -22,7 +22,12 @@ from std_msgs.msg import UInt8, Bool, Float32MultiArray
 
 from tf2_ros import TransformBroadcaster
 
+"""
+Finds the origin position of each drone in a swarm (using LLA coordinates) and
+computes the NED position of each origin wrt the origin of drone 1.
 
+Assumes the difference in attitude of each origin reference frame is negligible.
+"""
 class FixedFramesBroadcaster(Node):
 
     def __init__(self, num_drones):

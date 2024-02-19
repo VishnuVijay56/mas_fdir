@@ -54,6 +54,7 @@ class DynamicFramesBroadcaster(Node):
         self.local_pos_sub = [None] * num_drones
         self.local_att_sub = [None] * num_drones
         self.tf_broadcaster = [None] * num_drones
+        self.transform = [None] * num_drones
         for i in range(num_drones):
             sub_pos_topic_name = "/px4_" + str(i+1) + "/fmu/out/vehicle_local_position"
             self.local_pos_sub[i] = self.create_subscription(
@@ -62,14 +63,18 @@ class DynamicFramesBroadcaster(Node):
                 partial(self.local_position_callback, drone_ind=i),
                 qos_profile_sub)
             
-            # sub_att_topic_name = "/px4_" + str(i+1) + "/fmu/out/vehicle_attitude"
-            # self.local_att_sub[i] = self.create_subscription(
-            #     VehicleAttitude,
-            #     sub_att_topic_name,
-            #     partial(self.local_attitude_callback, drone_ind=i),
-            #     qos_profile_sub)
+            sub_att_topic_name = "/px4_" + str(i+1) + "/fmu/out/vehicle_attitude"
+            self.local_att_sub[i] = self.create_subscription(
+                VehicleAttitude,
+                sub_att_topic_name,
+                partial(self.local_attitude_callback, drone_ind=i),
+                qos_profile_sub)
             
             self.tf_broadcaster[i] = TransformBroadcaster(self)
+
+            self.transform[i] = TransformStamped()
+            self.transform[i].header.frame_id = "drone_" + str(i + 1) + "_origin"
+            self.transform[i].child_frame_id = "drone_" + str(i + 1) + "_pos"
 
 
 
@@ -77,25 +82,29 @@ class DynamicFramesBroadcaster(Node):
         
     def local_position_callback(self,msg,drone_ind):
         try:
-            t = TransformStamped()
+            self.transform[drone_ind].header.stamp = self.get_clock().now().to_msg()
+            self.transform[drone_ind].transform.translation.x = msg.x
+            self.transform[drone_ind].transform.translation.y = msg.y
+            self.transform[drone_ind].transform.translation.z = msg.z
 
-            t.header.stamp = self.get_clock().now().to_msg()
-            t.header.frame_id = "drone_" + str(drone_ind + 1) + "_origin"
-            t.child_frame_id = "drone_" + str(drone_ind + 1) + "_pos"
-            t.transform.translation.x = msg.x
-            t.transform.translation.y = msg.y
-            t.transform.translation.z = msg.z
-            t.transform.rotation.x = 0.0
-            t.transform.rotation.y = 0.0
-            t.transform.rotation.z = 0.0
-            t.transform.rotation.w = 1.0
-
-            self.tf_broadcaster[drone_ind].sendTransform(t)
+            self.tf_broadcaster[drone_ind].sendTransform(self.transform[drone_ind])
 
         except:
             self.get_logger().info("Exception: Issue with getting position of drone #" + str(drone_ind))
 
 
+    def local_attitude_callback(self,msg,drone_ind):
+        try:
+            self.transform[drone_ind].header.stamp = self.get_clock().now().to_msg()
+            self.transform[drone_ind].transform.rotation.x = msg.q[0]
+            self.transform[drone_ind].transform.rotation.y = msg.q[1]
+            self.transform[drone_ind].transform.rotation.z = msg.q[2]
+            self.transform[drone_ind].transform.rotation.w = -msg.q[3]
+
+            self.tf_broadcaster[drone_ind].sendTransform(self.transform[drone_ind])
+
+        except:
+            self.get_logger().info("Exception: Issue with getting attitude of drone #" + str(drone_ind))
 
 ### Main Func
     
