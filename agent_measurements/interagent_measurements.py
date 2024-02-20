@@ -62,8 +62,6 @@ class Interagent_Measurements(Node):
         self.global_pos_sub = [None] * num_drones
         self.local_pos_pub = [None] * num_drones
         self.publisher_timers = [None] * num_drones
-        self.tf_fixed_broadcaster = [None] * num_drones
-        self.tf_broadcaster = [None] * num_drones
         for i in range(num_drones):
             sub_topic_name = "/px4_" + str(i+1) + "/fmu/out/vehicle_global_position"
             self.global_pos_sub[i] = self.create_subscription(
@@ -80,10 +78,6 @@ class Interagent_Measurements(Node):
             
             self.publisher_timers[i] = self.create_timer(self.timer_period, 
                                             partial(self.local_measurements_callback, drone_ind=i))
-            
-            self.tf_broadcaster[i] = TransformBroadcaster(self)
-            self.tf_fixed_broadcaster[i] = TransformBroadcaster(self)
-
 
 
 
@@ -93,20 +87,6 @@ class Interagent_Measurements(Node):
         try:
             if (self.ref_origins_lla[drone_ind] is None): # assign origin of each drone
                 self.ref_origins_lla[drone_ind] = np.array([msg.lat, msg.lon, msg.alt])
-                t = TransformStamped()
-
-                t.header.stamp = self.get_clock().now().to_msg()
-                t.header.frame_id = 'world'
-                t.child_frame_id = "drone_" + str(drone_ind + 1)
-                t.transform.translation.x = 0.0
-                t.transform.translation.y = 2.0
-                t.transform.translation.z = 0.0
-                t.transform.rotation.x = 0.0
-                t.transform.rotation.y = 0.0
-                t.transform.rotation.z = 0.0
-                t.transform.rotation.w = 1.0
-
-                self.tf_broadcaster.sendTransform(t)
         
             if (self.ref_origins_lla[0] is not None): # if drone 1 origin is set, calc local pos wrt drone 1 origin
                 ref_pos_ned = navpy.lla2ned(msg.lat, msg.lon, msg.alt, 
@@ -138,14 +118,14 @@ class Interagent_Measurements(Node):
                 self.get_logger().info("Exception: A variable is None type")
             
             self.meas_window[drone_ind, i, self.meas_head] = dist_i
-            self.get_logger().info("Drone " + str(drone_ind+1) + " to Drone " + str(i+1) + ": " + str(self.meas_window[drone_ind, i, :].flatten()))
+            # self.get_logger().info("Drone " + str(drone_ind+1) + " to Drone " + str(i+1) + ": " + str(self.meas_window[drone_ind, i, :].flatten()))
             msg_array[i] = np.mean(self.meas_window[drone_ind, i, :].flatten())
         
         # Change head pointer
         self.meas_head[drone_ind] = (self.meas_head[drone_ind] + 1) % self.window_size
 
         # Send off measurements
-        self.get_logger().info("drone #" + str(drone_ind) + ": " + str(msg_array))
+        # self.get_logger().info("drone #" + str(drone_ind) + ": " + str(msg_array))
         msg.data = msg_array
         self.local_pos_pub[drone_ind].publish(msg)
 
@@ -176,7 +156,7 @@ def main():
     # Node init
     rclpy.init(args=None)
     interagent_measurer = Interagent_Measurements(num_drones=num_drones)
-    interagent_measurer.get_logger().info("Initialized")
+    # interagent_measurer.get_logger().info("Initialized")
 
     # Spin Node
     rclpy.spin(interagent_measurer)
