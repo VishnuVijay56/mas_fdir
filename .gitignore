@@ -30,7 +30,7 @@ devel_isolated/
 .cproject
 
 # vscode stuff
-.code-workspace
+*.code-workspace
 
 # qcreator stuff
 CMakeLists.txt.user
