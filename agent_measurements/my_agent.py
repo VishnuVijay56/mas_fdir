@@ -14,9 +14,10 @@ class MyAgent():
         self.position       =   init_position
         self.faulty         =   faulty 
         self.error_vector   =   err_vector if (err_vector is not None) else np.zeros(self.position.shape)
-        self.neighbor_ids   =   []
         
+        self.neighbor_ids   =   []
         self.edge_idx       =   []
+        self.measurements   =   {}
         
         self.x_cp           =   {}
         self.w_cp           =   {}
@@ -29,44 +30,54 @@ class MyAgent():
 
         self.misc_dict      =   {}
 
-    # Returns estimated position (true pos + error vector)
-    def get_estimated_pos(self):
-        if not self.faulty:
-            return      self.position
-        else:
-            return      self.position + self.error_vector
-    
-    # Returns true position
-    def get_true_pos(self):
-        return self.position
+
+    ###     Setting Functions
 
     # Sets neighbors of current agent
     def set_neighbors(self, neighbor_list):
         self.neighbor_ids   =   neighbor_list
         return None
-
-    # Returns list of agent ids that are neighbors
-    def get_neighbors(self):
-        return self.neighbor_ids
     
     # Sets elements in agent dictionary
     def set_dict_elem(self, keys, values):
         self.misc_dict[keys]        =   values
         return None
-        
-    # Returns values from misc dictionary
-    def get_dict_elem(self, key):
-        return self.misc_dict[key]
     
     # Sets indices of edges this vertex is involved in
     def set_edge_indices(self, edge_idx):
         self.edge_idx = edge_idx
         return None
     
+    #
+    def set_measurements(self, iam_array):
+        for id in self.neighbor_ids:
+            self.measurements[id] = iam_array[id]
+        
+        return None
+    
+
+
+    ###     Getting Functions
+
+    # Returns estimated position (true pos + error vector)
+    def get_pos(self):
+        return self.position
+
+    # Returns list of agent ids that are neighbors
+    def get_neighbors(self):
+        return self.neighbor_ids
+        
+    # Returns values from misc dictionary
+    def get_dict_elem(self, key):
+        return self.misc_dict[key]
+    
     # Gets lists of edge indices this vertex is involved in
     def get_edge_indices(self):
         return self.edge_idx
     
+
+    ###     Initializing Functions
+
     # 
     def init_x_cp(self, var):
         self.x_cp = var
@@ -102,4 +113,3 @@ class MyAgent():
     def init_w(self, var, nbr_ids):
         self.w = {id: var for id in nbr_ids}
         return None
-    
