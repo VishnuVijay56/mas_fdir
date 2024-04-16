@@ -43,9 +43,6 @@ class Fault_Detector(Node):
         self.rho = 1.0
         self.dim = 3
         for agent_id, agent in enumerate(agents):
-            # num_edges       = len(agent.get_edge_indices())
-            # num_neighbors   = len(agent.get_neighbors())
-
             # CVX variables
             agent.init_x_cp(cp.Variable((self.dim, 1)))
             agent.init_w_cp(cp.Variable((self.dim, 1)), agent.get_neighbors())
@@ -62,6 +59,8 @@ class Fault_Detector(Node):
         self.x_star = [np.zeros((self.dim, 1)) for i in range(self.num_agents)]         # Contains reconstructed error vector from localized SCP problem
         self.p_est = [agents[i].get_pos() for i in range(self.num_agents)]              # Contains reconstructed position vector
         self.p_reported = deepcopy(self.p_est)                                          # Reported positions of agents
+        self.exp_meas = self.measurement_model()                                        # Expected measurements given positions and error
+        self.R = self.get_Jacobian_matrix()                                             # Jacobian of measurement model
 
 
         # Node Parameters
@@ -95,6 +94,7 @@ class Fault_Detector(Node):
         
         self.measurements_sub = [None] * self.num_agents
         self.pos_sub = [None] * self.num_agents
+        self.err_pub = [None] * self.num_agents
 
         for i in range(self.num_agents):
             # Subscribers
@@ -105,12 +105,19 @@ class Fault_Detector(Node):
                 partial(self.sub_measurements_callback, drone_ind=i),
                 qos_profile_sub)
             
-            sub_pos_name = "/px4_" + str(i+1) + "/fmu/out/primal2_variables"
+            sub_pos_name = "/px4_" + str(i+1) + "/fmu/in/trajectory_setpoint"
             self.pos_sub[i] = self.create_subscription(
                 TrajectorySetpoint,
                 sub_pos_name,
                 partial(self.sub_pos_callback, drone_ind=i),
                 qos_profile_sub)
+            
+            # Publishers
+            pub_err_name = "/px4_" + str(i+1) + "/fmu/out/reconstructed_error"
+            self.err_pub[i] = self.create_publisher(
+                Float32MultiArray,
+                pub_err_name,
+                qos_profile_pub)
             
         # Callback Timers
         self.admm_update_timer[i] = self.create_timer(self.timer_period, 
@@ -132,18 +139,21 @@ class Fault_Detector(Node):
 
     # Relative Position of drone wrt centroid
     def sub_pos_callback(self, msg, drone_ind):
-
-        try:
-            print()
+        if self.centroid_pos == None: # Check if centroid pos is known
+            return
+        
+        try: # Extract msg and make pos rel to centroid
+            my_ned_pos = msg.position.flatten()
+            self.agent_rel_pos[drone_ind] = my_ned_pos - self.centroid_pos
         except:
             self.get_logger().info("Exception: Issue with getting Relative Position of drone #" + str(drone_ind))
 
 
     # Position of Centroid of swarm
     def sub_centroid_callback(self, msg):
-
+        
         try:
-            print()
+            self.centroid_pos = msg.position.flatten()
         except:
             self.get_logger().info("Exception: Issue with getting Centroid of Drone Swarm")
 
@@ -153,23 +163,11 @@ class Fault_Detector(Node):
 
     # Calls the ADMM Update Step
     def admm_update(self):
-        
+        ##      Initialization  - Get the true inter-agent measurements
         y = self.true_measurements()
+        z = [(y[i] - self.exp_meas[i]) for i, _ in enumerate(y)]       
 
 
-
-        ##      Relinearize (SCP step)
-        if (self.curr_iter % self.n_admm):
-            print("SCP Stuff")
-            # z = true measurement - expected measurement
-            exp_meas = self.measurement_model()
-            self.R = self.get_Jacobian_matrix()
-            
-            for agent in self.agents:
-                agent.init_w(np.zeros((self.dim, 1)), agent.get_neighbors())
-        
-        z = [(y[i] - exp_meas[i]) for i, _ in enumerate(y)]
-        
         ##      Minimization    - Primal Variable 1
         
         for id, agent in enumerate(self.agents):
@@ -199,7 +197,7 @@ class Fault_Detector(Node):
 
 
         ##      Minimization    - Thresholding Parameter
-
+        # TODO: Implement this
 
         ##      Minimization    - Primal Variable 2
         for id, agent in enumerate(self.agents):
@@ -257,11 +255,37 @@ class Fault_Detector(Node):
                 
                 # Update position and x_dev
                 self.p_est[agent_id] = self.p_reported[agent_id] + self.x_star[agent_id]
+            
+        ##      Update          - Linearized Measurement Model
+            self.exp_meas = self.measurement_model()
+            self.R = self.get_Jacobian_matrix()
+            
+        ##      Update          - Reset primal variables w after relinearization
+            for agent in self.agents:
+                agent.init_w(np.zeros((self.dim, 1)), agent.get_neighbors())
+
+
+        ##      End         - Publish error, increment current iteration, and return
+        for id, agent in enumerate(self.agents):
+            self.publish_err(id)
 
         self.curr_iter += 1
         return
+    
 
+    # Publish error vector
+    def publish_err(self, id):
+        # Init msg
+        msg = Float32MultiArray()
+        
+        # Current error = outer loop error + inner loop error
+        this_x = self.x_star[id].flatten() + self.agents[id].x_bar.flatten()
 
+        # Send off error
+        msg.data = this_x.tolist()
+        self.err_pub[id].publish(msg)
+
+        
 
     ### Helper Functions
 
@@ -354,15 +378,16 @@ def main():
         this_agent = MyAgent(agent_id=id,
                              init_position=Formation[id])
         
-        nbr_list = []
+        nbr_id_list = []
+        nbr_ptr_list = []
         edge_list = []
 
         for edge_ind, edge in enumerate(Edges):
             if id == edge[0]:
-                nbr_list.append(edge[1])
+                nbr_id_list.append(edge[1])
                 edge_list.append(edge_ind)
         
-        this_agent.set_neighbors(nbr_list)
+        this_agent.set_neighbors(nbr_id_list)
         this_agent.set_edge_indices(edge_list)
         
         Agents[id] = this_agent

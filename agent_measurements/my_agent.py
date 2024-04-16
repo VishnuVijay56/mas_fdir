@@ -16,6 +16,7 @@ class MyAgent():
         self.error_vector   =   err_vector if (err_vector is not None) else np.zeros(self.position.shape)
         
         self.neighbor_ids   =   []
+        self.neighbor_ptrs  =   {}
         self.edge_idx       =   []
         self.measurements   =   {}
         
@@ -33,11 +34,12 @@ class MyAgent():
 
     ###     Setting Functions
 
-    # Sets neighbors of current agent
-    def set_neighbors(self, neighbor_list):
-        self.neighbor_ids   =   neighbor_list
+    # Sets ids of neighbors of current agent
+    def set_neighbors(self, id_list, ptr_list=None):
+        self.neighbor_ids   =   id_list
+        self.neighbor_ptrs  =   ptr_list
         return None
-    
+       
     # Sets elements in agent dictionary
     def set_dict_elem(self, keys, values):
         self.misc_dict[keys]        =   values
