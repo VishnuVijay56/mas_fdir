@@ -26,22 +26,23 @@ from std_msgs.msg import UInt8, Bool, Float32MultiArray
 
 class Fault_Detector(Node):
 
-    def __init__(self, agents, edge_list):
+    def __init__(self, debug, dim, agents, edge_list):
 
         super().__init__("fault_detector")
 
 
         ##  Arguments
+        self.debug = debug
         self.agents = agents
         self.num_agents = len(agents)
         self.edge_list = edge_list
+        self.dim = dim
 
 
         ##  Initialization - Optimization Parameters
-        self.n_admm = 10
+        self.n_admm = 20
         self.curr_iter = 0
         self.rho = 1.0
-        self.dim = 3
         for agent_id, agent in enumerate(agents):
             # CVX variables
             agent.init_x_cp(cp.Variable((self.dim, 1)))
@@ -65,7 +66,7 @@ class Fault_Detector(Node):
 
         # Node Parameters
         self.timer_period = 0.01  # seconds
-        self.centroid_pos = None
+        self.centroid_pos = np.array([[0], [0], [0]]).T
         self.agent_rel_pos = self.p_est # [None] * self.num_agents
 
 
@@ -89,7 +90,7 @@ class Fault_Detector(Node):
         self.centroid_sub = self.create_subscription(
                 TrajectorySetpoint,
                 '/px4_0/fmu/in/trajectory_centroid',
-                self.sub_measurements_callback,
+                self.sub_centroid_callback,
                 qos_profile_sub)
         
         self.measurements_sub = [None] * self.num_agents
@@ -139,20 +140,24 @@ class Fault_Detector(Node):
 
     # Relative Position of drone wrt centroid
     def sub_pos_callback(self, msg, drone_ind):
-        if self.centroid_pos == None: # Check if centroid pos is known
+        if (self.debug): # If in debugging mode
+            self.agent_rel_pos[drone_ind] = self.p_reported
             return
         
         try: # Extract msg and make pos rel to centroid
             my_ned_pos = msg.position.flatten()
             self.agent_rel_pos[drone_ind] = my_ned_pos - self.centroid_pos
+            self.agent_rel_pos[drone_ind].reshape(self.dim, -1)
         except:
             self.get_logger().info("Exception: Issue with getting Relative Position of drone #" + str(drone_ind))
 
 
     # Position of Centroid of swarm
     def sub_centroid_callback(self, msg):
+        if (self.debug): # If in debugging mode
+            self.centroid_pos = np.array([[0], [0], [0]]).T
         
-        try:
+        try: # Not in debugging mode
             self.centroid_pos = msg.position.flatten()
         except:
             self.get_logger().info("Exception: Issue with getting Centroid of Drone Swarm")
@@ -258,8 +263,10 @@ class Fault_Detector(Node):
                 agent.mu[nbr_id] = deepcopy(agent.mu[nbr_id] + self.rho * constr_d)
 
 
-        ##      Update          - Error Vectors after ADMM Subroutine (before SCP Relinearization)
+        ##      Update          - SCP Outer Loop Handling
         if (self.curr_iter % self.n_admm):
+            print("SCP Step")
+            ##          Update          - Error Vectors after ADMM Subroutine
             for agent_id, agent in enumerate(self.agents): 
                 for list_ind, nbr_id in enumerate(agent.get_neighbors()):
                     agent.x_star[nbr_id] = agent.x_star[nbr_id] + self.agents[nbr_id].x_bar
@@ -269,14 +276,18 @@ class Fault_Detector(Node):
                 
                 # Update position and x_dev
                 self.p_est[agent_id] = self.p_reported[agent_id] + self.x_star[agent_id]
+                print(f" -> Agent {agent_id} Pos: {self.p_est[agent_id].flatten()}")
             
-        ##      Update          - Linearized Measurement Model
-            self.exp_meas = self.measurement_model()
-            self.R = self.get_Jacobian_matrix()
-            
-        ##      Update          - Reset primal variables w after relinearization
-            for agent in self.agents:
-                agent.init_w(np.zeros((self.dim, 1)), agent.get_neighbors())
+            ##          Update          - Relinearize Measurement Model and Reset Primal Variables w_i
+            if (self.curr_iter - self.n_admm) >= 0:
+
+                # Linearized Measurement Model
+                self.exp_meas = self.measurement_model()
+                self.R = self.get_Jacobian_matrix()
+                
+                # Reset primal variables w after relinearization
+                for agent in self.agents:
+                    agent.init_w(np.zeros((self.dim, 1)), agent.get_neighbors())
 
 
         ##      End         - Publish error, increment current iteration, and return
@@ -320,8 +331,20 @@ class Fault_Detector(Node):
     # Returns true inter-agent measurements according to Phi
     def true_measurements(self):
         true_meas = []
+        
+        if (self.debug): # If in debugging mode
+            for edge in self.edge_list:
+                id1 = edge[0]
+                id2 = edge[1]
 
-        for edge in self.edge_list:
+                true_pos1 = self.agents[id1].position
+                true_pos2 = self.agents[id2].position
+
+                dist = self.distance(true_pos1, true_pos2)
+                true_meas.append(dist)
+            return true_meas
+
+        for edge in self.edge_list: # Not in debugging mode
             true_meas.append(self.agents[edge[0]].measurements[edge[1]])
 
         return true_meas
@@ -364,15 +387,17 @@ class Fault_Detector(Node):
     
 def main():
     # Initializations
+    DEBUG = False
+    dim = 3
     num_agents = 6
     Agents = [None] * num_agents
-    Formation = [
-                np.array([[3.0*np.cos(np.pi/180*0),     3.0*np.sin(np.pi/180*0),    0]]).T,
-                np.array([[3.0*np.cos(np.pi/180*60),    3.0*np.sin(np.pi/180*60),   0]]).T,
-                np.array([[3.0*np.cos(np.pi/180*120),   3.0*np.sin(np.pi/180*120),  0]]).T,
-                np.array([[3.0*np.cos(np.pi/180*180),   3.0*np.sin(np.pi/180*180),  0]]).T,
-                np.array([[3.0*np.cos(np.pi/180*240),   3.0*np.sin(np.pi/180*240),  0]]).T,
-                np.array([[3.0*np.cos(np.pi/180*300),   3.0*np.sin(np.pi/180*300),  0]]).T]
+    Formation =     [
+                     np.array([[3.0*np.cos(np.pi/180*0),     3.0*np.sin(np.pi/180*0),    0]]).T,
+                     np.array([[3.0*np.cos(np.pi/180*60),    3.0*np.sin(np.pi/180*60),   0]]).T,
+                     np.array([[3.0*np.cos(np.pi/180*120),   3.0*np.sin(np.pi/180*120),  0]]).T,
+                     np.array([[3.0*np.cos(np.pi/180*180),   3.0*np.sin(np.pi/180*180),  0]]).T,
+                     np.array([[3.0*np.cos(np.pi/180*240),   3.0*np.sin(np.pi/180*240),  0]]).T,
+                     np.array([[3.0*np.cos(np.pi/180*300),   3.0*np.sin(np.pi/180*300),  0]]).T]
     Edges =         [[0,1], [0,2], [0,3], 
                      [0,4], [0,5], [1,2],
                      [1,3], [1,4], [1,5],
@@ -404,15 +429,37 @@ def main():
         
         Agents[id] = this_agent
 
+    # Add error vector
+    if DEBUG:
+        faulty_id   =   np.random.randint(0, high=num_agents)
+        fault_vec   =   0.5*np.random.rand(dim, 1) # np.array([[0.0, 0, 0]]).T #
+        Agents[faulty_id].faulty = True
+        Agents[faulty_id].error_vector = fault_vec
+        print("\n\n================================================================")
+        print(f"Faulty Agent:   {faulty_id}")
+        print(f"Faulty Vector:  {fault_vec.flatten()}")
+        for id, pos in enumerate(Formation):
+            print(f" -> Agent {id} True Pos: {pos.flatten()}")
+        print("================================================================\n\n")
 
     
     # Node init
     rclpy.init(args=None)
-    fault_detector = Fault_Detector(agents=Agents, edge_list=Edges)
+    fault_detector = Fault_Detector(debug=DEBUG, dim=dim, agents=Agents, edge_list=Edges)
     # interagent_measurer.get_logger().info("Initialized")
 
     # Spin Node
-    rclpy.spin(fault_detector)
+    try:
+        rclpy.spin(fault_detector)
+    except KeyboardInterrupt:
+        if (DEBUG):
+            print("\n\nKeyboardInterrupt Called")
+            print("\n\n================================================================")
+            print(f"Faulty Agent:   {faulty_id}")
+            print(f"Faulty Vector:  {fault_vec.flatten()}")
+            for id, pos in enumerate(Formation):
+                print(f" -> Agent {id} True Pos: {pos.flatten()}")
+            print("================================================================\n\n")
 
     # Explicitly destroy node
     fault_detector.destroy_node()

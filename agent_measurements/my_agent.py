@@ -8,27 +8,36 @@ Description:
 import numpy as np
 
 class MyAgent():
-    # Constructor
+
+    ##      Constructor
+    
     def __init__(self, agent_id=0, init_position=np.zeros((3,1)), faulty=False, err_vector=None):
+        # Prescribed information about the agent
         self.agent_id       =   agent_id
         self.position       =   init_position
+
+        # Used for debugging of script
         self.faulty         =   faulty 
         self.error_vector   =   err_vector if (err_vector is not None) else np.zeros(self.position.shape)
         
+        # Graph information
         self.neighbor_ids   =   []
         self.neighbor_ptrs  =   {}
         self.edge_idx       =   []
         self.measurements   =   {}
         
+        # CVXPY variables
         self.x_cp           =   {}
         self.w_cp           =   {}
 
+        # Variables updated over the course of optimization
         self.x_bar          =   []
         self.lam            =   {}
         self.mu             =   {}
         self.x_star         =   {}
         self.w              =   {}
 
+        # Miscellaneous items
         self.misc_dict      =   {}
 
 
@@ -63,7 +72,7 @@ class MyAgent():
 
     # Returns estimated position (true pos + error vector)
     def get_pos(self):
-        return self.position
+        return (self.position + self.error_vector)
 
     # Returns list of agent ids that are neighbors
     def get_neighbors(self):
