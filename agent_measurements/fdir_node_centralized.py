@@ -120,7 +120,7 @@ class Fault_Detector(Node):
                 qos_profile_pub)
             
         # Callback Timers
-        self.admm_update_timer[i] = self.create_timer(self.timer_period, 
+        self.admm_update_timer = self.create_timer(self.timer_period, 
                                             self.admm_update)
 
 
@@ -163,6 +163,20 @@ class Fault_Detector(Node):
 
     # Calls the ADMM Update Step
     def admm_update(self):
+        ##      Check           - See if all variables are set before proceeding
+        
+        if (any(pos is None for pos in self.agent_rel_pos) or (self.centroid_pos is None)):
+            print("\n ERROR: ")
+            for id, pos in enumerate(self.agent_rel_pos):
+                if pos is None:
+                    print(f"\tAgent {id} has an invalid relative position")
+            
+            if self.centroid_pos is None:
+                print(f"\tCentroid has invalid value")
+            
+            return
+
+
         ##      Initialization  - Get the true inter-agent measurements
         y = self.true_measurements()
         z = [(y[i] - self.exp_meas[i]) for i, _ in enumerate(y)]       
@@ -359,19 +373,17 @@ def main():
                 np.array([[3.0*np.cos(np.pi/180*180),   3.0*np.sin(np.pi/180*180),  0]]).T,
                 np.array([[3.0*np.cos(np.pi/180*240),   3.0*np.sin(np.pi/180*240),  0]]).T,
                 np.array([[3.0*np.cos(np.pi/180*300),   3.0*np.sin(np.pi/180*300),  0]]).T]
-    Edges =     [[0,1], [0,2], [0,3],
-                 [0,4], [0,5], [1,2],
-                 [1,4], [1,5], [1,6],
-                 [2,3], [2,5], [2,6],
-                 [3,4], [3,5], [3,6], 
-                 [4,5], [4,6], [5,6],
-
-                 [1,0], [2,0], [3,0],
-                 [4,0], [5,0], [2,1],
-                 [4,1], [5,1], [6,1],
-                 [3,2], [5,2], [6,2],
-                 [4,3], [5,3], [6,3],
-                 [5,4], [6,4], [6,5]] # these edges are directed
+    Edges =         [[0,1], [0,2], [0,3], 
+                     [0,4], [0,5], [1,2],
+                     [1,3], [1,4], [1,5],
+                     [2,3], [2,4], [2,5],
+                     [3,4], [3,5], [4,5],
+                    
+                     [1,0], [2,0], [3,0], 
+                     [4,0], [5,0], [2,1],
+                     [3,1], [4,1], [5,1],
+                     [3,2], [4,2], [5,2],
+                     [4,3], [5,3], [5,4]] # these edges are directed
     
     # Graph
     for id, _ in enumerate(Agents): # Create agent objects with nbr and edge lists
