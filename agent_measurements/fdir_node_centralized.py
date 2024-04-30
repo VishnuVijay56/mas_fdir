@@ -162,6 +162,36 @@ class Fault_Detector(Node):
         except:
             self.get_logger().info("Exception: Issue with getting Centroid of Drone Swarm")
 
+    
+    # Adjacency matrix of the graph
+    def sub_adj_matrix(self, msg):
+        if self.debug: # If in debugging mode
+            return
+        
+        try: # Not in debugging mode
+            self.adj_matrix = np.array(msg.data).reshape(self.num_agents, -1)
+            new_edge_list = []
+            for i in range(self.num_agents):
+                nbr_id_list = []
+                this_edge_list = []
+                for j in range(self.num_agents):
+                    if (i == j): # skip if on diagonal
+                        continue
+
+                    elif (self.adj_matrix[i, j] == 1): # If adjacent
+                        new_edge_list.append([i, j]) # global edge list
+                        this_edge_list.append(len(new_edge_list)) # agent edge list
+                        nbr_id_list.append(j) # nbr list
+                    
+                self.agents[i].set_neighbors(nbr_id_list)
+                self.agents[i].set_edge_indices(new_edge_list)
+            
+            # Set global edge list
+            self.edge_list = new_edge_list
+
+        except:
+            self.get_logger().info("Exception: Issue with getting the adjacency matrix of the system")
+
 
 
     ### Publisher callbacks
