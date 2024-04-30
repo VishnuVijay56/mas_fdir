@@ -205,6 +205,10 @@ class Fault_Detector(Node):
     # Calls the ADMM Update Step
     def admm_update(self):
         ##      Check           - See if all variables are set before proceeding
+
+        for id, agent in enumerate(self.agents):
+            if len(agent.measurements) == 0:
+                return
         
         if (any(pos is None for pos in self.agent_rel_pos) or (self.centroid_pos is None)):
             print("\n ERROR: ")
