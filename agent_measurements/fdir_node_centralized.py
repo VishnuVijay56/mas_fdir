@@ -93,6 +93,12 @@ class Fault_Detector(Node):
                 self.sub_centroid_callback,
                 qos_profile_sub)
         
+        self.adj_matrix_sub = self.create_subscription(
+            Float32MultiArray,
+            '/px4_0/detector/in/adjacency',
+            self.sub_adj_matrix,
+            qos_profile_sub)
+        
         self.measurements_sub = [None] * self.num_agents
         self.pos_sub = [None] * self.num_agents
         self.err_pub = [None] * self.num_agents
@@ -178,9 +184,9 @@ class Fault_Detector(Node):
                     if (i == j): # skip if on diagonal
                         continue
 
-                    elif (self.adj_matrix[i, j] == 1): # If adjacent
+                    elif (self.adj_matrix[i, j] == 1.0): # If adjacent
                         new_edge_list.append([i, j]) # global edge list
-                        this_edge_list.append(len(new_edge_list)) # agent edge list
+                        this_edge_list.append(len(new_edge_list)-1) # agent edge list
                         nbr_id_list.append(j) # nbr list
                     
                 self.agents[i].set_neighbors(nbr_id_list)
