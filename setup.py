@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 import os
 from glob import glob
 
-package_name = 'agent_measurements'
+package_name = 'mas_fdir'
 
 setup(
     name=package_name,
@@ -23,9 +23,10 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-        	'interagent_measurements = agent_measurements.interagent_measurements:main',
-        	'fixed_frames_tf2_broadcaster = agent_measurements.fixed_frames_tf2_broadcaster:main',
-        	'dynamic_frames_tf2_broadcaster = agent_measurements.dynamic_frames_tf2_broadcaster:main',
+        	'interagent_measurements = mas_fdir.interagent_measurements:main',
+        	'fixed_frames_tf2_broadcaster = mas_fdir.fixed_frames_tf2_broadcaster:main',
+        	'dynamic_frames_tf2_broadcaster = mas_fdir.dynamic_frames_tf2_broadcaster:main',
+        	'fdir_node_centralized = mas_fdir.fdir_node_centralized:main',
         	
         ],
     },
