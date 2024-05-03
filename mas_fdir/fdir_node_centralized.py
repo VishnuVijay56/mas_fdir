@@ -20,7 +20,7 @@ from my_agent import MyAgent
 
 from px4_msgs.msg import VehicleLocalPosition, VehicleGlobalPosition, TrajectorySetpoint
 from geometry_msgs.msg import PointStamped, TransformStamped
-from std_msgs.msg import UInt8, Bool, Float32MultiArray
+from std_msgs.msg import UInt8, Bool, Float32MultiArray, Float32
 
 
 class Fault_Detector(Node):
@@ -61,6 +61,7 @@ class Fault_Detector(Node):
         self.p_reported = [None] * self.num_agents                                      # Reported positions of agents
         self.exp_meas = self.measurement_model()                                        # Expected measurements given positions and error
         self.R = self.get_Jacobian_matrix()                                             # Jacobian of measurement model
+        self.residuals = [None] * self.num_agents                                       # Residuals of each agent to be checked against the threshold
 
 
         ## Initialization - Specific to ROS2 Implementation
@@ -112,6 +113,7 @@ class Fault_Detector(Node):
         self.local_pos_sub = [None] * self.num_agents
         self.spawn_offset_sub = [None] * self.num_agents
         self.err_pub = [None] * self.num_agents
+        self.residual_pub = [None] * self.num_agents
 
         for i in range(self.num_agents):
             # Subscribers
@@ -142,6 +144,13 @@ class Fault_Detector(Node):
                 Float32MultiArray,
                 pub_err_name,
                 qos_profile_pub)
+            
+            pub_res_name = f"/px4_{i+1}/fmu/out/residual"
+            self.residual_pub[i] = self.create_publisher(
+                Float32,
+                pub_res_name,
+                qos_profile_pub
+            )
             
         
         # Callback Timers
@@ -278,33 +287,53 @@ class Fault_Detector(Node):
         ##      Minimization    - Primal Variable 1
         
         for id, agent in enumerate(self.agents):
-            objective = cp.norm(agent.x_star[id] + agent.x_cp)
-            
-            # Summation for c() constraint
-            for _, edge_ind in enumerate(agent.get_edge_indices()): 
-                constr_c = self.R[edge_ind][:, self.dim*id:self.dim*(id+1)] @ agent.x_cp - z[edge_ind]
+            # Thresholding: Summation over edges
+            term1 = 0
+            for i, edge_ind in enumerate(agent.get_edge_indices()):
+                R_k = self.R[edge_ind]
+                constr_c = R_k[:, self.dim*id:self.dim(id+1)] @ (-agent.x_star[id]) - z[edge_ind]
                 for nbr_id in agent.get_neighbors():
-                    constr_c += self.R[edge_ind][:, self.dim*nbr_id:self.dim*(nbr_id+1)] @ self.agents[nbr_id].w[id]
+                    constr_c += R_k[:, self.dim*id:self.dim*(id+1)] @ agent.w[nbr_id]
                 
-                objective += ((self.rho/2)*cp.power(cp.norm(constr_c), 2)
-                                + agent.lam[edge_ind].T @ (constr_c))
+                term1 += R_k[:, self.dim*id:self.dim*(id+1)].T @ (constr_c + (agent.lam[edge_ind] / self.rho))
             
-            # Summation for d() constraint
-            for _, nbr_id in enumerate(agent.get_neighbors()): 
-                constr_d = agent.x_cp - agent.w[nbr_id]
-                objective += ((self.rho/2)*cp.power(cp.norm(constr_d), 2)
-                              + agent.mu[nbr_id].T @ (constr_d))
+            # Thresholding: Summation over neighbors
+            term2 = 0
+            for nbr_id in agent.get_neighbors():
+                constr_d = -agent.x_star[id] - agent.w[nbr_id]
+                term2 += constr_d + (agent.mu[nbr_id] / self.rho)
+            
+            # Thresholding: Check that residual is under threshold
+            this_res = np.linalg.norm(term1 + term2)
+            self.residuals[id] = this_res
+            if (this_res*self.rho <= 1): # skip optimization
+                agent.x_bar = deepcopy(-agent.x_star[id])
+            else:
+            # Optimization: Solve minimization problem for x_bar if over threshold
+                objective = cp.norm(agent.x_star[id] + agent.x_cp)
                 
-            prob1 = cp.Problem(cp.Minimize(objective), [])
-            prob1.solve(verbose=False)
-            if prob1.status != cp.OPTIMAL:
-                print("\nERROR Problem 1: Optimization problem not solved @ (%d)" % (self.curr_iter))
+                # Summation for c() constraint
+                for _, edge_ind in enumerate(agent.get_edge_indices()): 
+                    constr_c = self.R[edge_ind][:, self.dim*id:self.dim*(id+1)] @ agent.x_cp - z[edge_ind]
+                    for nbr_id in agent.get_neighbors():
+                        constr_c += self.R[edge_ind][:, self.dim*nbr_id:self.dim*(nbr_id+1)] @ self.agents[nbr_id].w[id]
+                    
+                    objective += ((self.rho/2)*cp.power(cp.norm(constr_c), 2)
+                                    + agent.lam[edge_ind].T @ (constr_c))
+                
+                # Summation for d() constraint
+                for _, nbr_id in enumerate(agent.get_neighbors()): 
+                    constr_d = agent.x_cp - agent.w[nbr_id]
+                    objective += ((self.rho/2)*cp.power(cp.norm(constr_d), 2)
+                                + agent.mu[nbr_id].T @ (constr_d))
+                    
+                prob1 = cp.Problem(cp.Minimize(objective), [])
+                prob1.solve(verbose=False)
+                if prob1.status != cp.OPTIMAL:
+                    print("\nERROR Problem 1: Optimization problem not solved @ (%d)" % (self.curr_iter))
 
-            agent.x_bar = deepcopy(np.array(agent.x_cp.value).reshape((-1, 1)))
+                agent.x_bar = deepcopy(np.array(agent.x_cp.value).reshape((-1, 1)))
 
-
-        ##      Minimization    - Thresholding Parameter
-        # TODO: Implement this
 
         ##      Minimization    - Primal Variable 2
         for id, agent in enumerate(self.agents):
@@ -378,9 +407,10 @@ class Fault_Detector(Node):
                     agent.init_w(np.zeros((self.dim, 1)), agent.get_neighbors())
 
 
-        ##      End         - Publish error, increment current iteration, and return
+        ##      End         - Publish error and residuals, increment current iteration, and return
         for id, agent in enumerate(self.agents):
             self.publish_err(id)
+            self.publish_residual(id)
 
         self.curr_iter += 1
         return
@@ -397,6 +427,15 @@ class Fault_Detector(Node):
         # Send off error
         msg.data = this_x.tolist()
         self.err_pub[id].publish(msg)
+        return
+
+    
+    # Publish agent residual
+    def publish_residual(self, id):
+        msg = Float32()
+        msg.data = self.residuals[id]
+        self.residual_pub[id].publish(msg)
+        return
 
         
 
