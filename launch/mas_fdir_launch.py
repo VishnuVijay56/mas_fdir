@@ -11,14 +11,14 @@ def generate_launch_description():
             package='mas_fdir',
 	    executable='interagent_measurements',
 	    name='interagent_measurements'),
-	Node(
-	    package='mas_fdir',
-	    executable='fixed_frames_tf2_broadcaster',
-	    name='fixed_frames_tf2_broadcaster'),
-	Node(
-	    package='mas_fdir',
-	    executable='dynamic_frames_tf2_broadcaster',
-	    name='dynamic_frames_tf2_broadcaster'),
+	# Node(
+	#     package='mas_fdir',
+	#     executable='fixed_frames_tf2_broadcaster',
+	#     name='fixed_frames_tf2_broadcaster'),
+	# Node(
+	#     package='mas_fdir',
+	#     executable='dynamic_frames_tf2_broadcaster',
+	#     name='dynamic_frames_tf2_broadcaster'),
 	Node(
 	    package='mas_fdir',
 	    executable='fdir_node_centralized',

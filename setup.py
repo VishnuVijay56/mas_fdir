@@ -27,7 +27,7 @@ setup(
         	'fixed_frames_tf2_broadcaster = mas_fdir.fixed_frames_tf2_broadcaster:main',
         	'dynamic_frames_tf2_broadcaster = mas_fdir.dynamic_frames_tf2_broadcaster:main',
         	'fdir_node_centralized = mas_fdir.fdir_node_centralized:main',
-        	
+        	'my_agent = mas_fdir.my_agent'
         ],
     },
 )

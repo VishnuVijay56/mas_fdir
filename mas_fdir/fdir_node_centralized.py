@@ -16,7 +16,7 @@ from rclpy.node import Node
 from rclpy.clock import Clock
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 
-from my_agent import MyAgent
+from mas_fdir.my_agent import MyAgent
 
 from px4_msgs.msg import VehicleLocalPosition, VehicleGlobalPosition, TrajectorySetpoint
 from geometry_msgs.msg import PointStamped, TransformStamped
@@ -65,7 +65,7 @@ class Fault_Detector(Node):
 
 
         ## Initialization - Specific to ROS2 Implementation
-        self.timer_period = 0.01  # seconds
+        self.timer_period = 0.1  # seconds
         self.centroid_pos = None
         self.agent_local_pos = self.p_est
         self.formation_msg = [None] * self.num_agents
@@ -131,9 +131,9 @@ class Fault_Detector(Node):
                 partial(self.sub_local_pos_callback, drone_ind=i),
                 qos_profile_sub)
             
-            sub_spawn_offset_name = "/px4_" + str(i+1) + "/detector/in/spawn_offset"
+            sub_spawn_offset_name = "/px4_" + str(i+1) + "/fmu/in/vehicle_spawn_offset"
             self.spawn_offset_sub[i] = self.create_subscription(
-                PointStamped,
+                Float32MultiArray,
                 sub_spawn_offset_name,
                 partial(self.sub_spawn_offset_callback, drone_ind=i),
                 qos_profile_sub)
@@ -187,11 +187,12 @@ class Fault_Detector(Node):
         if (self.debug): # If in debugging mode
             return
         
-        if self.spawn_offset_pos[drone_ind] is None: # If spawn position is set, don't do anything
+        if self.spawn_offset_pos[drone_ind] is not None: # If spawn position is set, don't do anything
             return
         
         try:
-            self.spawn_offset_pos[drone_ind] = np.array([[msg.point.x], [msg.point.y], [msg.point.z]]).T
+            arr = msg.data
+            self.spawn_offset_pos[drone_ind] = np.array(arr).reshape((self.dim, -1))
         except:
             self.get_logger().info("Exception: Issue with getting the spawn offset position of drone #" + str(drone_ind))
 
@@ -261,12 +262,13 @@ class Fault_Detector(Node):
 
         unset_var = False
         # Check
-        if any(pos is None for pos in self.agent_local_pos):
-            self.get_logger().info("A local position is not set")
-            unset_var = True
-        if any(pos is None for pos in self.spawn_offset_pos):
-            self.get_logger().info("A spawn offset is not set")
-            unset_var = True
+        for id, agent in enumerate(self.agents):
+            if (self.agent_local_pos[id] is None):
+                self.get_logger().info(f"A local position is not set at {id}")
+                unset_var = True
+            if (self.spawn_offset_pos[id] is None):
+                self.get_logger().info(f"A spawn offset is not set at {id}")
+                unset_var = True
         if self.centroid_pos is None:
             self.get_logger().info("The centroid pos is not set")
             unset_var = True
@@ -291,7 +293,7 @@ class Fault_Detector(Node):
             term1 = 0
             for i, edge_ind in enumerate(agent.get_edge_indices()):
                 R_k = self.R[edge_ind]
-                constr_c = R_k[:, self.dim*id:self.dim(id+1)] @ (-agent.x_star[id]) - z[edge_ind]
+                constr_c = R_k[:, self.dim*id:self.dim*(id+1)] @ (-agent.x_star[id]) - z[edge_ind]
                 for nbr_id in agent.get_neighbors():
                     constr_c += R_k[:, self.dim*id:self.dim*(id+1)] @ agent.w[nbr_id]
                 
@@ -310,6 +312,7 @@ class Fault_Detector(Node):
                 agent.x_bar = deepcopy(-agent.x_star[id])
             else:
             # Optimization: Solve minimization problem for x_bar if over threshold
+                self.get_logger().info(f"Optimization for agent {id}")
                 objective = cp.norm(agent.x_star[id] + agent.x_cp)
                 
                 # Summation for c() constraint
