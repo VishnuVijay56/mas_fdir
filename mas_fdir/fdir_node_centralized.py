@@ -49,10 +49,10 @@ class Fault_Detector(Node):
 
             # Parameters
             agent.init_x_bar(np.zeros((self.dim, 1)))
-            agent.init_lam(np.zeros((1, 1)), agent.get_edge_indices())
-            agent.init_mu(np.zeros((self.dim, 1)), agent.get_neighbors())
-            agent.init_x_star(np.zeros((self.dim, 1)), agent.get_neighbors()) # own err is last elem
-            agent.init_w(np.zeros((self.dim, 1)), agent.get_neighbors())
+            agent.init_lam(np.zeros((1, 1)), np.arange(len(edge_list))) #agent.get_edge_indices())
+            agent.init_mu(np.zeros((self.dim, 1)), np.arange(self.num_agents)) #agent.get_neighbors())
+            agent.init_x_star(np.zeros((self.dim, 1)), np.arange(self.num_agents)) #agent.get_neighbors()) # own err is last elem
+            agent.init_w(np.zeros((self.dim, 1)), np.arange(self.num_agents)) #agent.get_neighbors())
 
 
         ##  Initialization - Measurements and Positions
