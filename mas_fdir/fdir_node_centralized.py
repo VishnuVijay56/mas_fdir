@@ -229,24 +229,24 @@ class Fault_Detector(Node):
         
         try: # Not in debugging mode
             self.adj_matrix = np.array(msg.data).reshape(self.num_agents, -1)
-            new_edge_list = []
+            new_global_edge_list = []
             for i in range(self.num_agents):
                 nbr_id_list = []
-                this_edge_list = []
+                agent_edge_list = []
                 for j in range(self.num_agents):
                     if (i == j): # skip if on diagonal
                         continue
 
                     elif (self.adj_matrix[i, j] == 1.0): # If adjacent
-                        new_edge_list.append([i, j]) # global edge list
-                        this_edge_list.append(len(new_edge_list)-1) # agent edge list
+                        new_global_edge_list.append([i, j]) # global edge list
+                        agent_edge_list.append(len(new_global_edge_list)-1) # agent edge list
                         nbr_id_list.append(j) # nbr list
                     
                 self.agents[i].set_neighbors(nbr_id_list)
-                self.agents[i].set_edge_indices(this_edge_list)
+                self.agents[i].set_edge_indices(agent_edge_list)
             
             # Set global edge list
-            self.edge_list = new_edge_list
+            self.edge_list = new_global_edge_list
 
         except:
             self.get_logger().info("Exception: Issue with getting the adjacency matrix of the system")
