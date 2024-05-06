@@ -276,6 +276,11 @@ class Fault_Detector(Node):
         # Return if variable is not set
         if unset_var:
             return
+        
+
+        ##      Initialization  - Compute the relative distance of the agents wrt centroid
+        for id, agent in enumerate(self.agents):
+            self.get_rel_pos(id)
 
 
         ##      Initialization  - Get the true inter-agent measurements
@@ -518,14 +523,13 @@ class Fault_Detector(Node):
     
 
     # Computes relative position of drones wrt centroid
-    def get_rel_pos(self):
-        for id, agent in enumerate(self.agents):
-            # Compute
-            rel_pos = self.agent_local_pos[id] - self.centroid_pos + self.spawn_offset_pos[id]
-            # Assign
-            agent.position = rel_pos
-            self.p_reported[id] = rel_pos
+    def get_rel_pos(self, id):
+        # Compute
+        rel_pos = self.agent_local_pos[id] - self.centroid_pos + self.spawn_offset_pos[id]
 
+        # Assign
+        self.agents[id].position = rel_pos
+        self.p_reported[id] = rel_pos
 
 
 
