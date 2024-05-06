@@ -253,7 +253,118 @@ class Fault_Detector(Node):
 
 
 
+    ### Helper Functions
+
+    # Returns expected inter-agent measurements given position estimate and reconstructed error
+    def measurement_model(self):
+        est_meas = []
+
+        for edge in self.edge_list:
+            recons_pos1 = self.p_est[edge[0]] + self.x_star[edge[0]]
+            recons_pos2 = self.p_est[edge[1]] + self.x_star[edge[1]]
+            dist = self.distance(recons_pos1, recons_pos2)
+            
+            est_meas.append(dist)
+
+        return est_meas
+    
+
+    # Returns true inter-agent measurements according to Phi
+    def true_measurements(self):
+        true_meas = []
+        
+        if (self.debug): # If in debugging mode
+            for edge in self.edge_list:
+                id1 = edge[0]
+                id2 = edge[1]
+
+                true_pos1 = self.agents[id1].position
+                true_pos2 = self.agents[id2].position
+
+                dist = self.distance(true_pos1, true_pos2)
+                true_meas.append(dist)
+            return true_meas
+
+        for edge in self.edge_list: # Not in debugging mode
+            try:
+                true_meas.append(self.agents[edge[0]].measurements[edge[1]])
+            except:
+                self.get_logger().info(f"Exception: Measurement not set on edge {edge}")
+                self.all_meas_set = False
+                break
+
+        return true_meas
+    
+
+    # Computes distance between 2 points
+    def distance(self, pos1, pos2):
+        return np.linalg.norm(pos1 - pos2, 2)
+
+
+    # Computes row of R
+    def get_Jacobian_row(self, edge):
+        agent1_id = edge[0]
+        agent2_id = edge[1]
+        pos1 = self.p_est[agent1_id] + self.x_star[agent1_id]
+        pos2 = self.p_est[agent2_id] + self.x_star[agent2_id]
+        
+        disp = (pos2 - pos1)
+        R_k = np.zeros((1, self.dim*self.num_agents))
+
+        dist = self.distance(pos1, pos2)
+        R_k[:, self.dim*agent2_id:self.dim*(agent2_id + 1)] = disp.T  / dist
+        R_k[:, self.dim*agent1_id:self.dim*(agent1_id + 1)] = -disp.T / dist
+
+        return R_k
+
+
+    # Computes whole R matrix
+    def get_Jacobian_matrix(self):
+        R = []
+
+        for edge_ind, edge in enumerate(self.edge_list):
+            R.append(self.get_Jacobian_row(edge))
+        
+        return R
+    
+
+    # Computes relative position of drones wrt centroid
+    def get_rel_pos(self, id):
+        # Compute
+        rel_pos = self.agent_local_pos[id] - self.centroid_pos + self.spawn_offset_pos[id]
+        self.get_logger().info(f"Agent {id} - Rel Pos\t: {rel_pos.flatten()}")
+
+        # Assign
+        self.agents[id].position = rel_pos
+        self.p_reported[id] = rel_pos
+
+
+
     ### Publisher callbacks
+
+    # Publish error vector
+    def publish_err(self, id):
+        # Init msg
+        msg = Float32MultiArray()
+        
+        # Current error = outer loop error + inner loop error
+        this_x = self.x_star[id].flatten() + self.agents[id].x_bar.flatten()
+        self.get_logger().info(f"Agent {id} - Error\t: {this_x}")
+
+        # Send off error
+        msg.data = this_x.tolist()
+        self.err_pub[id].publish(msg)
+        return
+
+    
+    # Publish agent residual
+    def publish_residual(self, id):
+        msg = Float32()
+        msg.data = self.residuals[id]
+        self.residual_pub[id].publish(msg)
+        self.get_logger().info(f"Agent {id} - Residual\t: {self.residuals[id]}")
+        return
+    
 
     # Calls the ADMM Update Step
     def admm_update(self):
@@ -317,7 +428,7 @@ class Fault_Detector(Node):
                 agent.x_bar = deepcopy(-agent.x_star[id])
             else:
             # Optimization: Solve minimization problem for x_bar if over threshold
-                self.get_logger().info(f"Optimization for agent {id}")
+                # self.get_logger().info(f"Optimization for agent {id}")
                 objective = cp.norm(agent.x_star[id] + agent.x_cp)
                 
                 # Summation for c() constraint
@@ -424,115 +535,7 @@ class Fault_Detector(Node):
         return
     
 
-    # Publish error vector
-    def publish_err(self, id):
-        # Init msg
-        msg = Float32MultiArray()
-        
-        # Current error = outer loop error + inner loop error
-        this_x = self.x_star[id].flatten() + self.agents[id].x_bar.flatten()
-
-        # Send off error
-        msg.data = this_x.tolist()
-        self.err_pub[id].publish(msg)
-        return
-
     
-    # Publish agent residual
-    def publish_residual(self, id):
-        msg = Float32()
-        msg.data = self.residuals[id]
-        self.residual_pub[id].publish(msg)
-        return
-
-        
-
-    ### Helper Functions
-
-    # Returns expected inter-agent measurements given position estimate and reconstructed error
-    def measurement_model(self):
-        est_meas = []
-
-        for edge in self.edge_list:
-            recons_pos1 = self.p_est[edge[0]] + self.x_star[edge[0]]
-            recons_pos2 = self.p_est[edge[1]] + self.x_star[edge[1]]
-            dist = self.distance(recons_pos1, recons_pos2)
-            
-            est_meas.append(dist)
-
-        return est_meas
-    
-
-    # Returns true inter-agent measurements according to Phi
-    def true_measurements(self):
-        true_meas = []
-        
-        if (self.debug): # If in debugging mode
-            for edge in self.edge_list:
-                id1 = edge[0]
-                id2 = edge[1]
-
-                true_pos1 = self.agents[id1].position
-                true_pos2 = self.agents[id2].position
-
-                dist = self.distance(true_pos1, true_pos2)
-                true_meas.append(dist)
-            return true_meas
-
-        for edge in self.edge_list: # Not in debugging mode
-            try:
-                true_meas.append(self.agents[edge[0]].measurements[edge[1]])
-            except:
-                self.get_logger().info(f"Exception: Measurement not set on edge {edge}")
-                self.all_meas_set = False
-                break
-
-        return true_meas
-    
-
-    # Computes distance between 2 points
-    def distance(self, pos1, pos2):
-        return np.linalg.norm(pos1 - pos2, 2)
-
-
-    # Computes row of R
-    def get_Jacobian_row(self, edge):
-        agent1_id = edge[0]
-        agent2_id = edge[1]
-        pos1 = self.p_est[agent1_id] + self.x_star[agent1_id]
-        pos2 = self.p_est[agent2_id] + self.x_star[agent2_id]
-        
-        disp = (pos2 - pos1)
-        R_k = np.zeros((1, self.dim*self.num_agents))
-
-        dist = self.distance(pos1, pos2)
-        R_k[:, self.dim*agent2_id:self.dim*(agent2_id + 1)] = disp.T  / dist
-        R_k[:, self.dim*agent1_id:self.dim*(agent1_id + 1)] = -disp.T / dist
-
-        return R_k
-
-
-    # Computes whole R matrix
-    def get_Jacobian_matrix(self):
-        R = []
-
-        for edge_ind, edge in enumerate(self.edge_list):
-            R.append(self.get_Jacobian_row(edge))
-        
-        return R
-    
-
-    # Computes relative position of drones wrt centroid
-    def get_rel_pos(self, id):
-        # Compute
-        rel_pos = self.agent_local_pos[id] - self.centroid_pos + self.spawn_offset_pos[id]
-
-        # Assign
-        self.agents[id].position = rel_pos
-        self.p_reported[id] = rel_pos
-
-
-
 ### Main Func
     
 def main():
