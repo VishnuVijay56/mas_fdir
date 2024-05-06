@@ -177,7 +177,7 @@ class Fault_Detector(Node):
             return
         
         try: # Extract msg
-            self.agent_local_pos[drone_ind] = np.array([[msg.x], [msg.y], [msg.z]]).T
+            self.agent_local_pos[drone_ind] = np.array([[msg.x], [msg.y], [msg.z]]).reshape((self.dim, -1))
         except:
             self.get_logger().info("Exception: Issue with getting Relative Position of drone #" + str(drone_ind))
 
@@ -214,10 +214,10 @@ class Fault_Detector(Node):
     # Sub: Virtual Leader NED Position
     def sub_centroid_callback(self, msg):
         if (self.debug): # If in debugging mode
-            self.centroid_pos = np.array([[0], [0], [0]]).T
+            self.centroid_pos = np.array([[0], [0], [0]]).reshape((self.dim, -1))
         
         try: # Not in debugging mode
-            self.centroid_pos = np.array([[msg.point.x], [msg.point.y], [msg.point.z]]).T
+            self.centroid_pos = np.array([[msg.point.x], [msg.point.y], [msg.point.z]]).reshape((self.dim, -1))
         except:
             self.get_logger().info("Exception: Issue with getting Centroid of Drone Swarm")
 
