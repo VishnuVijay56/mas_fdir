@@ -45,11 +45,11 @@ class Fault_Detector(Node):
         for agent_id, agent in enumerate(agents):
             # CVX variables
             agent.init_x_cp(cp.Variable((self.dim, 1)))
-            agent.init_w_cp(cp.Variable((self.dim, 1)), agent.get_neighbors())
+            agent.init_w_cp(cp.Variable((self.dim, 1)), np.arange(self.num_agents)) #agent.get_neighbors())
 
             # Parameters
             agent.init_x_bar(np.zeros((self.dim, 1)))
-            agent.init_lam(np.zeros((1, 1)), np.arange(len(edge_list))) #agent.get_edge_indices())
+            agent.init_lam(np.zeros((1, 1)), np.arange(self.num_agents)) #agent.get_edge_indices())
             agent.init_mu(np.zeros((self.dim, 1)), np.arange(self.num_agents)) #agent.get_neighbors())
             agent.init_x_star(np.zeros((self.dim, 1)), np.arange(self.num_agents)) #agent.get_neighbors()) # own err is last elem
             agent.init_w(np.zeros((self.dim, 1)), np.arange(self.num_agents)) #agent.get_neighbors())
@@ -238,7 +238,7 @@ class Fault_Detector(Node):
                         continue
 
                     elif (self.adj_matrix[i, j] == 1.0): # If adjacent
-                        new_global_edge_list.append([i, j]) # global edge list
+                        new_global_edge_list.append((i, j)) # global edge list
                         agent_edge_list.append(len(new_global_edge_list)-1) # agent edge list
                         nbr_id_list.append(j) # nbr list
                     
@@ -297,7 +297,7 @@ class Fault_Detector(Node):
                 for nbr_id in agent.get_neighbors():
                     constr_c += R_k[:, self.dim*id:self.dim*(id+1)] @ agent.w[nbr_id]
                 
-                term1 += R_k[:, self.dim*id:self.dim*(id+1)].T @ (constr_c + (agent.lam[edge_ind] / self.rho))
+                term1 += R_k[:, self.dim*id:self.dim*(id+1)].T @ (constr_c + (agent.lam[self.edge_list[edge_ind]] / self.rho))
             
             # Thresholding: Summation over neighbors
             term2 = 0
@@ -322,7 +322,7 @@ class Fault_Detector(Node):
                         constr_c += self.R[edge_ind][:, self.dim*nbr_id:self.dim*(nbr_id+1)] @ self.agents[nbr_id].w[id]
                     
                     objective += ((self.rho/2)*cp.power(cp.norm(constr_c), 2)
-                                    + agent.lam[edge_ind].T @ (constr_c))
+                                    + agent.lam[self.edge_list[edge_ind]].T @ (constr_c))
                 
                 # Summation for d() constraint
                 for _, nbr_id in enumerate(agent.get_neighbors()): 
@@ -349,7 +349,7 @@ class Fault_Detector(Node):
                     constr_c = constr_c + self.R[edge_ind][:, self.dim*nbr_id:self.dim*(nbr_id+1)] @ self.agents[nbr_id].w_cp[id]
                 
                 objective += ((self.rho/2)*cp.power(cp.norm(constr_c), 2)
-                                + agent.lam[edge_ind].T @ (constr_c))
+                                + agent.lam[self.edge_list[edge_ind]].T @ (constr_c))
             
             # Summation for d() constraint
             for nbr_id in agent.get_neighbors():
@@ -375,7 +375,7 @@ class Fault_Detector(Node):
                 for nbr_id in agent.get_neighbors():
                     constr_c += self.R[edge_ind][:, self.dim*nbr_id:self.dim*(nbr_id+1)] @ self.agents[nbr_id].w[id]
                 
-                agent.lam[edge_ind] = deepcopy(agent.lam[edge_ind] + self.rho * constr_c)
+                agent.lam[self.edge_list[edge_ind]] = deepcopy(agent.lam[self.edge_list[edge_ind]] + self.rho * constr_c)
 
             # Summation for d() constraint
             for _, nbr_id in enumerate(agent.get_neighbors()):

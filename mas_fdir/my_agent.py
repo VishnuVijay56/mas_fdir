@@ -105,8 +105,8 @@ class MyAgent():
         return None
     
     #
-    def init_lam(self, var, edge_inds):
-        self.lam = {ind: var for ind in edge_inds}
+    def init_lam(self, var, nbr_ids):
+        self.lam = {(self.agent_id, id): var for id in nbr_ids}
         return None
     
     #
