@@ -39,9 +39,9 @@ class Fault_Detector(Node):
 
 
         ##  Initialization - Optimization Parameters
-        self.n_admm = 20
+        self.n_admm = 10
         self.curr_iter = 0
-        self.rho = 1.0
+        self.rho = 0.1
         for agent_id, agent in enumerate(agents):
             # CVX variables
             agent.init_x_cp(cp.Variable((self.dim, 1)))
@@ -133,9 +133,9 @@ class Fault_Detector(Node):
                 partial(self.sub_local_pos_callback, drone_ind=i),
                 qos_profile_sub)
             
-            sub_spawn_offset_name = f"/px4_{i+1}/fmu/in/vehicle_spawn_offset"
+            sub_spawn_offset_name = f"/px4_{i+1}/detector/in/spawn_offset"
             self.spawn_offset_sub[i] = self.create_subscription(
-                Float32MultiArray,
+                PointStamped,
                 sub_spawn_offset_name,
                 partial(self.sub_spawn_offset_callback, drone_ind=i),
                 qos_profile_sub)
@@ -196,8 +196,7 @@ class Fault_Detector(Node):
             return
         
         try:
-            arr = msg.data
-            self.spawn_offset_pos[drone_ind] = np.array(arr).reshape((self.dim, -1))
+            self.spawn_offset_pos[drone_ind] = np.array([[msg.point.x], [msg.point.y], [msg.point.z]]).reshape((self.dim, -1))
         except:
             self.get_logger().info("Exception: Issue with getting the spawn offset position of drone #" + str(drone_ind))
 
@@ -319,12 +318,12 @@ class Fault_Detector(Node):
     def get_rel_pos(self, id):
         # Compute
         rel_pos = self.agent_local_pos[id] - self.centroid_pos + self.spawn_offset_pos[id]
-        log_message = f"Agent {id} - " + \
-                      f"\n\tRadius: {np.linalg.norm(rel_pos)}" + \
-                      f"\n\tLocal Pos\t: {self.agent_local_pos[id].flatten()}" + \
-                      f"\n\tCentroid Pos\t: {self.centroid_pos.flatten()}" + \
-                      f"\n\tSpawn Offset\t: {self.spawn_offset_pos[id].flatten()}"                      
-        self.get_logger().info(log_message)
+        # log_message = f"Agent {id} - " + \
+        #               f"\n\tRadius: {np.linalg.norm(rel_pos)}" + \
+        #               f"\n\tLocal Pos\t: {self.agent_local_pos[id].flatten()}" + \
+        #               f"\n\tCentroid Pos\t: {self.centroid_pos.flatten()}" + \
+        #               f"\n\tSpawn Offset\t: {self.spawn_offset_pos[id].flatten()}"                      
+        # self.get_logger().info(log_message)
 
         # Assign
         self.agents[id].position = rel_pos
@@ -366,7 +365,7 @@ class Fault_Detector(Node):
         
         # Current error = outer loop error + inner loop error
         this_x = self.x_star[id].flatten() + self.agents[id].x_bar.flatten()
-        # self.get_logger().info(f"Agent {id} - Error\t: {this_x}")
+        self.get_logger().info(f"Agent {id} - Error\t: {this_x}")
 
         # Send off error
         msg.data = this_x.tolist()
@@ -379,7 +378,7 @@ class Fault_Detector(Node):
         msg = Float32()
         msg.data = self.residuals[id]
         self.residual_pub[id].publish(msg)
-        # self.get_logger().info(f"Agent {id} - Residual\t: {self.residuals[id]}")
+        self.get_logger().info(f"Agent {id} - Residual\t: {self.residuals[id]}")
         return
     
 
