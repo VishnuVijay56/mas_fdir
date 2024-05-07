@@ -15,6 +15,8 @@ from copy import deepcopy
 from rclpy.node import Node
 from rclpy.clock import Clock
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 
 from mas_fdir.my_agent import MyAgent
 
@@ -39,9 +41,9 @@ class Fault_Detector(Node):
 
 
         ##  Initialization - Optimization Parameters
-        self.n_admm = 10
+        self.n_admm = 50
         self.curr_iter = 0
-        self.rho = 0.1
+        self.rho = 0.5
         for agent_id, agent in enumerate(agents):
             # CVX variables
             agent.init_x_cp(cp.Variable((self.dim, 1)))
@@ -89,26 +91,34 @@ class Fault_Detector(Node):
             depth = 1
         )
 
+        ## Define - different callbackgroups
+        client_cb_group = MutuallyExclusiveCallbackGroup()
+        timer_cb_group = MutuallyExclusiveCallbackGroup()
 
         ##  Define - Subscribers and Publishers
-
         self.centroid_sub = self.create_subscription(
             PointStamped,
             '/px4_0/detector/in/vleader_position',
             self.sub_centroid_callback,
-            qos_profile_sub)
+            # qos_profile_sub)
+            qos_profile = qos_profile_sub,
+            callback_group = client_cb_group)
         
         self.adj_matrix_sub = self.create_subscription(
             Float32MultiArray,
             '/px4_0/detector/in/adjacency',
             self.sub_adj_matrix,
             qos_profile_sub)
+            # qos_profile = qos_profile_sub,
+            # callback_group = client_cb_group)
         
         self.formation_sub = self.create_subscription(
             Float32MultiArray,
             '/px4_0/detector/in/formation_config',
             self.sub_formation_callback,
-            qos_profile_sub)
+            # qos_profile_sub)
+            qos_profile = qos_profile_sub,
+            callback_group = client_cb_group)
 
         # Initialize List of Subs and Pubs for drones
         self.measurements_sub = [None] * self.num_agents
@@ -124,21 +134,28 @@ class Fault_Detector(Node):
                 Float32MultiArray,
                 sub_measurements_name,
                 partial(self.sub_measurements_callback, drone_ind=i),
-                qos_profile_sub)
+                # qos_profile_sub)
+                qos_profile = qos_profile_sub,
+                callback_group = client_cb_group)
             
-            sub_local_pos_name = f"/px4_{i+1}/fmu/out/vehicle_local_position"
+            # sub_local_pos_name = f"/px4_{i+1}/fmu/out/vehicle_local_position"
+            sub_local_pos_name = f"/px4_{i+1}/fmu/in/trajectory_setpoint"
             self.local_pos_sub[i] = self.create_subscription(
-                VehicleLocalPosition,
+                TrajectorySetpoint,
                 sub_local_pos_name,
                 partial(self.sub_local_pos_callback, drone_ind=i),
-                qos_profile_sub)
-            
+                # qos_profile_sub)
+                qos_profile = qos_profile_sub,
+                callback_group = client_cb_group)
+
             sub_spawn_offset_name = f"/px4_{i+1}/detector/in/spawn_offset"
             self.spawn_offset_sub[i] = self.create_subscription(
                 PointStamped,
                 sub_spawn_offset_name,
                 partial(self.sub_spawn_offset_callback, drone_ind=i),
-                qos_profile_sub)
+                # qos_profile_sub)
+                qos_profile = qos_profile_sub,
+                callback_group = client_cb_group)
             
             # Publishers
             pub_err_name = f"/px4_{i+1}/fmu/out/reconstructed_error"
@@ -157,7 +174,8 @@ class Fault_Detector(Node):
 
         ##  Define: Callback Timer(s)
         self.admm_update_timer = self.create_timer(self.timer_period, 
-                                            self.admm_update)
+                                            # self.admm_update)
+                                            self.admm_update, callback_group=timer_cb_group)
 
 
 
@@ -181,12 +199,13 @@ class Fault_Detector(Node):
             return
         
         try: # Extract msg
-            self.agent_local_pos[drone_ind] = np.array([[msg.x], [msg.y], [msg.z]]).reshape((self.dim, -1))
+            self.agent_local_pos[drone_ind] = np.array([[msg.position[0]], [msg.position[1]], [msg.position[2]]]).reshape((self.dim, -1))
+
+            # self.agent_local_pos[drone_ind] = np.array([[msg.x], [msg.y], [msg.z]]).reshape((self.dim, -1))
             # self.get_logger().info(f"Agent {drone_ind} Local Pos: {self.agent_local_pos[drone_ind].flatten()}")
         except:
             self.get_logger().info("Exception: Issue with getting Relative Position of drone #" + str(drone_ind))
 
-    
     # Sub: Spawn Offset Position
     def sub_spawn_offset_callback(self, msg, drone_ind):
         if self.admm_running:
@@ -324,6 +343,8 @@ class Fault_Detector(Node):
         #               f"\n\tCentroid Pos\t: {self.centroid_pos.flatten()}" + \
         #               f"\n\tSpawn Offset\t: {self.spawn_offset_pos[id].flatten()}"                      
         # self.get_logger().info(log_message)
+        if id == 2:
+            self.get_logger().info(f"Agent 2 : Rel Pos {rel_pos.flatten()}")
 
         # Assign
         self.agents[id].position = rel_pos
@@ -365,7 +386,8 @@ class Fault_Detector(Node):
         
         # Current error = outer loop error + inner loop error
         this_x = self.x_star[id].flatten() + self.agents[id].x_bar.flatten()
-        self.get_logger().info(f"Agent {id} - Error\t: {this_x}")
+        if id == 2:
+            self.get_logger().info(f"Agent {id} - Error\t: {this_x}")
 
         # Send off error
         msg.data = this_x.tolist()
@@ -378,7 +400,8 @@ class Fault_Detector(Node):
         msg = Float32()
         msg.data = self.residuals[id]
         self.residual_pub[id].publish(msg)
-        self.get_logger().info(f"Agent {id} - Residual\t: {self.residuals[id]}")
+        if id == 2:
+            self.get_logger().info(f"Agent {id} - Residual\t: {self.residuals[id]}")
         return
     
 
@@ -467,7 +490,7 @@ class Fault_Detector(Node):
                 prob1 = cp.Problem(cp.Minimize(objective), [])
                 prob1.solve(verbose=False)
                 if prob1.status != cp.OPTIMAL:
-                    self.get_logger().warning(f"~ERROR~ Problem 1: Optimization problem not solved @ {self.curr_iter}th iteration")
+                    self.get_logger().warning(f"~ERROR~ Problem 1: Agent {id} - Optimization Status {prob1.status} @ {self.curr_iter}th iteration")
 
                 agent.x_bar = deepcopy(np.array(agent.x_cp.value).reshape((-1, 1)))
 
@@ -494,7 +517,7 @@ class Fault_Detector(Node):
             prob2 = cp.Problem(cp.Minimize(objective), [])
             prob2.solve(verbose=False)
             if prob2.status != cp.OPTIMAL:
-                self.get_logger().warning(f"~ERROR~ Problem 2: Optimization problem not solved @ {self.curr_iter}th iteration")
+                self.get_logger().warning(f"~ERROR~ Problem 2: Agent {id} - Optimization Status {prob2.status} @ {self.curr_iter}th iteration")
 
             for _, nbr_id in enumerate(agent.get_neighbors()):
                 agent.w[nbr_id] = deepcopy(np.array(agent.w_cp[nbr_id].value).reshape((-1, 1)))
@@ -562,32 +585,75 @@ def main():
     # Initializations
     DEBUG = False
     dim = 3
-    num_agents = 6
+    num_agents = 7
     Agents = [None] * num_agents
+    # Formation =     [
+    #                  np.array([[3.0*np.cos(np.pi/180*0),     3.0*np.sin(np.pi/180*0),    0]]).T,
+    #                  np.array([[3.0*np.cos(np.pi/180*60),    3.0*np.sin(np.pi/180*60),   0]]).T,
+    #                  np.array([[3.0*np.cos(np.pi/180*120),   3.0*np.sin(np.pi/180*120),  0]]).T,
+    #                  np.array([[3.0*np.cos(np.pi/180*180),   3.0*np.sin(np.pi/180*180),  0]]).T,
+    #                  np.array([[3.0*np.cos(np.pi/180*240),   3.0*np.sin(np.pi/180*240),  0]]).T,
+    #                  np.array([[3.0*np.cos(np.pi/180*300),   3.0*np.sin(np.pi/180*300),  0]]).T]
+    
+    # Formation   =   [
+    #                  np.array([[4.0,   0.0,  2.0]]).T,
+    #                  np.array([[-4.0,  0.0,  1.0]]).T,
+    #                  np.array([[2.0,   2.0,  -0.5]]).T,
+    #                  np.array([[2.0,  -2.0,  -0.5]]).T,
+    #                  np.array([[-2.0, -2.0,  0.5]]).T,
+    #                  np.array([[-2.0,  2.0,  0.5]]).T]
+
     Formation =     [
-                     np.array([[3.0*np.cos(np.pi/180*0),     3.0*np.sin(np.pi/180*0),    0]]).T,
-                     np.array([[3.0*np.cos(np.pi/180*60),    3.0*np.sin(np.pi/180*60),   0]]).T,
-                     np.array([[3.0*np.cos(np.pi/180*120),   3.0*np.sin(np.pi/180*120),  0]]).T,
-                     np.array([[3.0*np.cos(np.pi/180*180),   3.0*np.sin(np.pi/180*180),  0]]).T,
-                     np.array([[3.0*np.cos(np.pi/180*240),   3.0*np.sin(np.pi/180*240),  0]]).T,
-                     np.array([[3.0*np.cos(np.pi/180*300),   3.0*np.sin(np.pi/180*300),  0]]).T]
-    Adjacency =     np.array([[0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                              [1.0, 0.0, 1.0, 1.0, 1.0, 1.0],
-                              [1.0, 1.0, 0.0, 1.0, 1.0, 1.0],
-                              [1.0, 1.0, 1.0, 0.0, 1.0, 1.0],
-                              [1.0, 1.0, 1.0, 1.0, 0.0, 1.0],
-                              [1.0, 1.0, 1.0, 1.0, 1.0, 0.0]], dtype=np.float64)
+                     np.array([[4.0*np.cos(np.pi/180*0),     4.0*np.sin(np.pi/180*0),    -2.0]]).T,
+                     np.array([[4.0*np.cos(np.pi/180*60),    4.0*np.sin(np.pi/180*60),   0.0]]).T,
+                     np.array([[4.0*np.cos(np.pi/180*120),   4.0*np.sin(np.pi/180*120),  -2.0]]).T,
+                     np.array([[4.0*np.cos(np.pi/180*180),   4.0*np.sin(np.pi/180*180),  0.0]]).T,
+                     np.array([[4.0*np.cos(np.pi/180*240),   4.0*np.sin(np.pi/180*240),  -2.0]]).T,
+                     np.array([[4.0*np.cos(np.pi/180*300),   4.0*np.sin(np.pi/180*300),  0.0]]).T,
+                     np.array([[0.0,  0.0, -1.0]]).T]
+    
+    # Adjacency =     np.array([[0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    #                           [1.0, 0.0, 1.0, 1.0, 1.0, 1.0],
+    #                           [1.0, 1.0, 0.0, 1.0, 1.0, 1.0],
+    #                           [1.0, 1.0, 1.0, 0.0, 1.0, 1.0],
+    #                           [1.0, 1.0, 1.0, 1.0, 0.0, 1.0],
+    #                           [1.0, 1.0, 1.0, 1.0, 1.0, 0.0]], dtype=np.float64)
+    
+    Adjacency   =   np.array([[0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                              [1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                              [1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0],
+                              [1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0],
+                              [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0],
+                              [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0],
+                              [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0]], dtype=np.float64)
+    
+    # Edges =         [(0,1), (0,2), (0,3), 
+    #                  (0,4), (0,5), (1,2),
+    #                  (1,3), (1,4), (1,5),
+    #                  (2,3), (2,4), (2,5),
+    #                  (3,4), (3,5), (4,5),
+                    
+    #                  (1,0), (2,0), (3,0), 
+    #                  (4,0), (5,0), (2,1),
+    #                  (3,1), (4,1), (5,1),
+    #                  (3,2), (4,2), (5,2),
+    #                  (4,3), (5,3), (5,4)] # these edges are directed
+    
     Edges =         [(0,1), (0,2), (0,3), 
-                     (0,4), (0,5), (1,2),
-                     (1,3), (1,4), (1,5),
-                     (2,3), (2,4), (2,5),
-                     (3,4), (3,5), (4,5),
+                     (0,4), (0,5), (0,6),
+                     (1,2), (1,3), (1,4),
+                     (1,5), (1,6), (2,3),
+                     (2,4), (2,5), (2,6),
+                     (3,4), (3,5), (3,6),
+                     (4,5), (4,6), (5,6),
                     
                      (1,0), (2,0), (3,0), 
-                     (4,0), (5,0), (2,1),
-                     (3,1), (4,1), (5,1),
-                     (3,2), (4,2), (5,2),
-                     (4,3), (5,3), (5,4)] # these edges are directed
+                     (4,0), (5,0), (6,0),
+                     (2,1), (3,1), (4,1),
+                     (5,1), (6,1), (3,2),
+                     (4,2), (5,2), (6,2),
+                     (4,3), (5,3), (6,3),
+                     (5,4), (6,4), (6,5)] # these edges are directed
     
     # Graph
     for id, _ in enumerate(Agents): # Create agent objects with nbr and edge lists
@@ -626,10 +692,13 @@ def main():
     rclpy.init(args=None)
     fault_detector = Fault_Detector(debug=DEBUG, dim=dim, agents=Agents, adj_matrix=Adjacency)
     # interagent_measurer.get_logger().info("Initialized")
+    executer = MultiThreadedExecutor()
+    executer.add_node(fault_detector)
 
     # Spin Node
     try:
-        rclpy.spin(fault_detector)
+        # rclpy.spin(fault_detector)
+        executer.spin()
     except KeyboardInterrupt:
         if (DEBUG):
             print("\n\nKeyboardInterrupt Called")

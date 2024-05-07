@@ -146,7 +146,7 @@ class Interagent_Measurements(Node):
 ### Main Func
     
 def main():
-    num_drones = 6
+    num_drones = 7
     # # Parse Arguments
     # main_args = sys.argv[1:]
     # num_drones = 1
