@@ -332,7 +332,7 @@ class Fault_Detector(Node):
     def get_rel_pos(self, id):
         # Compute
         rel_pos = self.agent_local_pos[id] - self.centroid_pos + self.spawn_offset_pos[id]
-        self.get_logger().info(f"Agent {id} - Rel Pos\t: {rel_pos.flatten()}")
+        self.get_logger().info(f"Agent {id} - Rel Pos\t: {rel_pos.flatten()}\n\tRadius: {np.linalg.norm(rel_pos)}")
 
         # Assign
         self.agents[id].position = rel_pos
@@ -349,7 +349,7 @@ class Fault_Detector(Node):
         
         # Current error = outer loop error + inner loop error
         this_x = self.x_star[id].flatten() + self.agents[id].x_bar.flatten()
-        self.get_logger().info(f"Agent {id} - Error\t: {this_x}")
+        # self.get_logger().info(f"Agent {id} - Error\t: {this_x}")
 
         # Send off error
         msg.data = this_x.tolist()
@@ -362,7 +362,7 @@ class Fault_Detector(Node):
         msg = Float32()
         msg.data = self.residuals[id]
         self.residual_pub[id].publish(msg)
-        self.get_logger().info(f"Agent {id} - Residual\t: {self.residuals[id]}")
+        # self.get_logger().info(f"Agent {id} - Residual\t: {self.residuals[id]}")
         return
     
 
