@@ -504,9 +504,12 @@ class Fault_Detector(Node):
 
 
         ##      Update          - SCP Outer Loop Handling
-        if (self.curr_iter % self.n_admm):
+        if (self.curr_iter % self.n_admm) and ((self.curr_iter - self.n_admm) >= 0):
             print("SCP Step")
-            ##          Update          - Error Vectors after ADMM Subroutine
+
+            ##          Update          - Post ADMM Subroutine Handling
+
+            # Update Error Vectors
             for agent_id, agent in enumerate(self.agents): 
                 for list_ind, nbr_id in enumerate(agent.get_neighbors()):
                     agent.x_star[nbr_id] = agent.x_star[nbr_id] + self.agents[nbr_id].x_bar
@@ -518,16 +521,13 @@ class Fault_Detector(Node):
                 self.p_est[agent_id] = self.p_reported[agent_id] + self.x_star[agent_id]
                 print(f" -> Agent {agent_id} Pos: {self.p_est[agent_id].flatten()}")
             
-            ##          Update          - Relinearize Measurement Model and Reset Primal Variables w_i
-            if (self.curr_iter - self.n_admm) >= 0:
+            # Linearized Measurement Model
+            self.exp_meas = self.measurement_model()
+            self.R = self.get_Jacobian_matrix()
 
-                # Linearized Measurement Model
-                self.exp_meas = self.measurement_model()
-                self.R = self.get_Jacobian_matrix()
-                
-                # Reset primal variables w after relinearization
-                for agent in self.agents:
-                    agent.init_w(np.zeros((self.dim, 1)), agent.get_neighbors())
+            # Reset primal variables w after relinearization
+            for agent in self.agents:
+                agent.init_w(np.zeros((self.dim, 1)), agent.get_neighbors())
 
 
         ##      End         - Publish error and residuals, increment current iteration, and return
