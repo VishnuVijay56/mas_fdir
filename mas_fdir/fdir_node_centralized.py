@@ -65,9 +65,9 @@ class Fault_Detector(Node):
 
 
         ## Initialization - Specific to ROS2 Implementation
-        self.timer_period = 0.1  # seconds
+        self.timer_period = 0.02  # seconds
         self.centroid_pos = None
-        self.agent_local_pos = self.p_est
+        self.agent_local_pos = [None] * self.num_agents
         self.formation_msg = [None] * self.num_agents
         self.spawn_offset_pos = [None] * self.num_agents
 
@@ -91,10 +91,10 @@ class Fault_Detector(Node):
         ##  Define - Subscribers and Publishers
 
         self.centroid_sub = self.create_subscription(
-                PointStamped,
-                '/px4_0/detector/in/vleader_position',
-                self.sub_centroid_callback,
-                qos_profile_sub)
+            PointStamped,
+            '/px4_0/detector/in/vleader_position',
+            self.sub_centroid_callback,
+            qos_profile_sub)
         
         self.adj_matrix_sub = self.create_subscription(
             Float32MultiArray,
@@ -117,21 +117,21 @@ class Fault_Detector(Node):
 
         for i in range(self.num_agents):
             # Subscribers
-            sub_measurements_name = "/px4_" + str(i+1) + "/fmu/out/interagent_distances"
+            sub_measurements_name = f"/px4_{i+1}/fmu/out/interagent_distances"
             self.measurements_sub[i] = self.create_subscription(
                 Float32MultiArray,
                 sub_measurements_name,
                 partial(self.sub_measurements_callback, drone_ind=i),
                 qos_profile_sub)
             
-            sub_local_pos_name = "/px4_" + str(i+1) + "/fmu/out/vehicle_local_position"
+            sub_local_pos_name = f"/px4_{i+1}/fmu/out/vehicle_local_position"
             self.local_pos_sub[i] = self.create_subscription(
                 VehicleLocalPosition,
                 sub_local_pos_name,
                 partial(self.sub_local_pos_callback, drone_ind=i),
                 qos_profile_sub)
             
-            sub_spawn_offset_name = "/px4_" + str(i+1) + "/fmu/in/vehicle_spawn_offset"
+            sub_spawn_offset_name = f"/px4_{i+1}/fmu/in/vehicle_spawn_offset"
             self.spawn_offset_sub[i] = self.create_subscription(
                 Float32MultiArray,
                 sub_spawn_offset_name,
@@ -139,7 +139,7 @@ class Fault_Detector(Node):
                 qos_profile_sub)
             
             # Publishers
-            pub_err_name = "/px4_" + str(i+1) + "/fmu/out/reconstructed_error"
+            pub_err_name = f"/px4_{i+1}/fmu/out/reconstructed_error"
             self.err_pub[i] = self.create_publisher(
                 Float32MultiArray,
                 pub_err_name,
@@ -152,8 +152,8 @@ class Fault_Detector(Node):
                 qos_profile_pub
             )
             
-        
-        # Callback Timers
+
+        ##  Define: Callback Timer(s)
         self.admm_update_timer = self.create_timer(self.timer_period, 
                                             self.admm_update)
 
@@ -255,7 +255,7 @@ class Fault_Detector(Node):
 
     ### Helper Functions
 
-    # Returns expected inter-agent measurements given position estimate and reconstructed error
+    # Help: Returns expected inter-agent measurements given position estimate and reconstructed error
     def measurement_model(self):
         est_meas = []
 
@@ -269,7 +269,7 @@ class Fault_Detector(Node):
         return est_meas
     
 
-    # Returns true inter-agent measurements according to Phi
+    # Help: Returns true inter-agent measurements according to Phi
     def true_measurements(self):
         true_meas = []
         
@@ -296,12 +296,12 @@ class Fault_Detector(Node):
         return true_meas
     
 
-    # Computes distance between 2 points
+    # Help: Computes distance between 2 points
     def distance(self, pos1, pos2):
         return np.linalg.norm(pos1 - pos2, 2)
 
 
-    # Computes row of R
+    # Help: Computes row of R
     def get_Jacobian_row(self, edge):
         agent1_id = edge[0]
         agent2_id = edge[1]
@@ -318,7 +318,7 @@ class Fault_Detector(Node):
         return R_k
 
 
-    # Computes whole R matrix
+    # Help: Computes whole R matrix
     def get_Jacobian_matrix(self):
         R = []
 
@@ -328,11 +328,15 @@ class Fault_Detector(Node):
         return R
     
 
-    # Computes relative position of drones wrt centroid
+    # Help: Computes relative position of drones wrt centroid
     def get_rel_pos(self, id):
         # Compute
         rel_pos = self.agent_local_pos[id] - self.centroid_pos + self.spawn_offset_pos[id]
-        self.get_logger().info(f"Agent {id} - Rel Pos\t: {rel_pos.flatten()}\n\tRadius: {np.linalg.norm(rel_pos)}")
+        log_message = f"Agent {id} - \n\tLocal Pos\t: {self.agent_local_pos[id].flatten()}" + \
+                      f"\n\tCentroid Pos\t: {self.centroid_pos.flatten()}" + \
+                      f"\n\tSpawn Offset\t: {self.spawn_offset_pos[id].flatten()}" + \
+                      f"\n\tRadius: {np.linalg.norm(rel_pos)}"
+        self.get_logger().info(log_message)
 
         # Assign
         self.agents[id].position = rel_pos
@@ -449,7 +453,7 @@ class Fault_Detector(Node):
                 prob1 = cp.Problem(cp.Minimize(objective), [])
                 prob1.solve(verbose=False)
                 if prob1.status != cp.OPTIMAL:
-                    print("\nERROR Problem 1: Optimization problem not solved @ (%d)" % (self.curr_iter))
+                    print(f"\nERROR Problem 1: Optimization problem not solved @ {self.curr_iter}th iteration")
 
                 agent.x_bar = deepcopy(np.array(agent.x_cp.value).reshape((-1, 1)))
 
@@ -476,7 +480,7 @@ class Fault_Detector(Node):
             prob2 = cp.Problem(cp.Minimize(objective), [])
             prob2.solve(verbose=False)
             if prob2.status != cp.OPTIMAL:
-                print("\nERROR Problem 2: Optimization problem not solved @ (%d)" % (self.curr_iter))
+                print(f"\nERROR Problem 2: Optimization problem not solved @ {self.curr_iter}th iteration")
 
             for _, nbr_id in enumerate(agent.get_neighbors()):
                 agent.w[nbr_id] = deepcopy(np.array(agent.w_cp[nbr_id].value).reshape((-1, 1)))
