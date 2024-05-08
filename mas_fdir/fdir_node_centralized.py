@@ -171,6 +171,12 @@ class Fault_Detector(Node):
                 qos_profile_pub
             )
             
+        
+        threshold_name = f"/px4_0/detector/out/threshold"
+        self.thres_pub = self.create_publisher(
+            Float32,
+            threshold_name,
+            qos_profile_pub)
 
         ##  Define: Callback Timer(s)
         self.admm_update_timer = self.create_timer(self.timer_period, 
@@ -290,7 +296,12 @@ class Fault_Detector(Node):
                 true_meas.append(dist)
             return true_meas
 
+        # print(self.edge_list)
+        # print('here')
         for edge in self.edge_list: # Not in debugging mode
+            # if code is called during the simulation, this part causes an error, need to debug
+            # print(edge)
+            # print(self.agents[edge[0]].measurements[edge[1]])
             try:
                 true_meas.append(self.agents[edge[0]].measurements[edge[1]])
             except:
@@ -386,6 +397,8 @@ class Fault_Detector(Node):
         
         # Current error = outer loop error + inner loop error
         this_x = self.x_star[id].flatten() + self.agents[id].x_bar.flatten()
+        this_x_norm = np.linalg.norm(this_x)
+        this_x = np.hstack((this_x,np.array(this_x_norm)))
         if id == 2:
             self.get_logger().info(f"Agent {id} - Error\t: {this_x}")
 
@@ -402,6 +415,13 @@ class Fault_Detector(Node):
         self.residual_pub[id].publish(msg)
         if id == 2:
             self.get_logger().info(f"Agent {id} - Residual\t: {self.residuals[id]}")
+        return
+    
+    # Publish residual threshold
+    def publish_threshold(self):
+        msg = Float32()
+        msg.data = 1/self.rho
+        self.thres_pub.publish(msg)
         return
     
 
@@ -573,6 +593,7 @@ class Fault_Detector(Node):
         for id, agent in enumerate(self.agents):
             self.publish_err(id)
             self.publish_residual(id)
+        self.publish_threshold()
 
         self.curr_iter += 1
         return
