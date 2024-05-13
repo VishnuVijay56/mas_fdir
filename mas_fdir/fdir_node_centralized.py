@@ -9,6 +9,7 @@ import rclpy
 import navpy
 import numpy as np
 import cvxpy as cp
+import time
 
 from functools import partial
 from copy import deepcopy
@@ -46,6 +47,8 @@ class Fault_Detector(Node):
         # Get
         self.model_ns = self.get_parameter('ros_ns').value
 
+        for ns in self.model_ns:
+            self.get_logger().info(f"ROS Namespace: {ns}")
 
 
         ## Initialization - Specific to ROS2 Implementation
@@ -108,28 +111,29 @@ class Fault_Detector(Node):
 
         self.centroid_sub = self.create_subscription(
             PointStamped,
-            '/px4_0/detector/in/vleader_position',
+            '/px4_0/detector/vleader_position',
             self.sub_centroid_callback,
             qos_profile = qos_profile_sub,
             callback_group = client_cb_group)
         
         self.adj_matrix_sub = self.create_subscription(
             Float32MultiArray,
-            '/px4_0/detector/in/adjacency',
+            '/px4_0/detector/adjacency',
             self.sub_adj_matrix,
             qos_profile = qos_profile_sub,
             callback_group = client_cb_group)
         
         self.formation_sub = self.create_subscription(
             Float32MultiArray,
-            '/px4_0/detector/in/formation_config',
+            '/px4_0/detector/formation_config',
             self.sub_formation_callback,
             qos_profile = qos_profile_sub,
             callback_group = client_cb_group)
         
+
         ## Define - Single Publishers
                 
-        threshold_name = f"/px4_0/detector/out/threshold"
+        threshold_name = f"/px4_0/detector/threshold"
         self.thres_pub = self.create_publisher(
             Float32,
             threshold_name,
@@ -156,7 +160,7 @@ class Fault_Detector(Node):
                 callback_group = client_cb_group)
             
             # sub_local_pos_name = f"/px4_{i+1}/fmu/out/vehicle_local_position"
-            sub_local_pos_name = f"/{name_space}/detector/trajectory_setpoint"
+            sub_local_pos_name = f"/{name_space}/fmu/in/trajectory_setpoint"
             self.local_pos_sub[i] = self.create_subscription(
                 TrajectorySetpoint,
                 sub_local_pos_name,
