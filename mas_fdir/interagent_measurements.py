@@ -30,14 +30,14 @@ class Interagent_Measurements(Node):
         super().__init__("interagent_measurements")
 
         # Node Parameters
-        self.timer_period = 0.5  # seconds
+        self.timer_period = 0.02  # seconds
         self.num_drones = num_drones
         self.local_pos_ned = [None] * num_drones # these will be wrt original drone 1 pos
         self.ref_origins_lla = [None] * num_drones # lla coordinates of each drone
         
 
         # Plotting measurements
-        self.window_size = 10
+        self.window_size = 2
         self.meas_window = np.zeros((self.num_drones, self.num_drones, self.window_size))
         self.meas_head = [0] * num_drones # points to ind of oldest data
 
@@ -54,7 +54,7 @@ class Interagent_Measurements(Node):
             reliability = QoSReliabilityPolicy.BEST_EFFORT,
             durability = QoSDurabilityPolicy.VOLATILE,
             history = QoSHistoryPolicy.KEEP_LAST,
-            depth = 5
+            depth = 1
         )
 
 

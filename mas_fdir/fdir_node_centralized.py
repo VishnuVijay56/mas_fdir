@@ -40,6 +40,23 @@ class Fault_Detector(Node):
         self.dim = dim
 
 
+        ## ROS2 Parameters
+        # Declare
+        self.declare_parameter('ros_ns', rclpy.Parameter.Type.STRING_ARRAY)
+        # Get
+        self.model_ns = self.get_parameter('ros_ns').value
+
+
+
+        ## Initialization - Specific to ROS2 Implementation
+        self.num_agents = len(self.model_ns)
+        self.timer_period = 0.1  # seconds
+        self.centroid_pos = None
+        self.agent_local_pos = [None] * self.num_agents
+        self.formation_msg = [None] * self.num_agents
+        self.spawn_offset_pos = [None] * self.num_agents
+
+
         ##  Initialization - Optimization Parameters
         self.n_admm = 50
         self.curr_iter = 0
@@ -47,14 +64,14 @@ class Fault_Detector(Node):
         for agent_id, agent in enumerate(agents):
             # CVX variables
             agent.init_x_cp(cp.Variable((self.dim, 1)))
-            agent.init_w_cp(cp.Variable((self.dim, 1)), np.arange(self.num_agents)) #agent.get_neighbors())
+            agent.init_w_cp(cp.Variable((self.dim, 1)), np.arange(self.num_agents))
 
             # Parameters
             agent.init_x_bar(np.zeros((self.dim, 1)))
-            agent.init_lam(np.zeros((1, 1)), np.arange(self.num_agents)) #agent.get_edge_indices())
-            agent.init_mu(np.zeros((self.dim, 1)), np.arange(self.num_agents)) #agent.get_neighbors())
-            agent.init_x_star(np.zeros((self.dim, 1)), np.arange(self.num_agents)) #agent.get_neighbors()) # own err is last elem
-            agent.init_w(np.zeros((self.dim, 1)), np.arange(self.num_agents)) #agent.get_neighbors())
+            agent.init_lam(np.zeros((1, 1)), np.arange(self.num_agents))
+            agent.init_mu(np.zeros((self.dim, 1)), np.arange(self.num_agents))
+            agent.init_x_star(np.zeros((self.dim, 1)), np.arange(self.num_agents)) # own err is last elem
+            agent.init_w(np.zeros((self.dim, 1)), np.arange(self.num_agents))
 
 
         ##  Initialization - Measurements and Positions
@@ -65,15 +82,6 @@ class Fault_Detector(Node):
         self.exp_meas = self.measurement_model()                                        # Expected measurements given positions and error
         self.R = self.get_Jacobian_matrix()                                             # Jacobian of measurement model
         self.residuals = [None] * self.num_agents                                       # Residuals of each agent to be checked against the threshold
-
-
-        ## Initialization - Specific to ROS2 Implementation
-        self.timer_period = 0.1  # seconds
-        self.centroid_pos = None
-        self.agent_local_pos = [None] * self.num_agents
-        self.formation_msg = [None] * self.num_agents
-        self.spawn_offset_pos = [None] * self.num_agents
-        self.admm_running = False
 
 
         # Set publisher and subscriber quality of service profile
@@ -91,16 +99,17 @@ class Fault_Detector(Node):
             depth = 1
         )
 
-        ## Define - different callbackgroups
+        ## Define - Different Callback Groups
         client_cb_group = MutuallyExclusiveCallbackGroup()
         timer_cb_group = MutuallyExclusiveCallbackGroup()
 
-        ##  Define - Subscribers and Publishers
+
+        ##  Define - Single Subscribers
+
         self.centroid_sub = self.create_subscription(
             PointStamped,
             '/px4_0/detector/in/vleader_position',
             self.sub_centroid_callback,
-            # qos_profile_sub)
             qos_profile = qos_profile_sub,
             callback_group = client_cb_group)
         
@@ -108,17 +117,26 @@ class Fault_Detector(Node):
             Float32MultiArray,
             '/px4_0/detector/in/adjacency',
             self.sub_adj_matrix,
-            qos_profile_sub)
-            # qos_profile = qos_profile_sub,
-            # callback_group = client_cb_group)
+            qos_profile = qos_profile_sub,
+            callback_group = client_cb_group)
         
         self.formation_sub = self.create_subscription(
             Float32MultiArray,
             '/px4_0/detector/in/formation_config',
             self.sub_formation_callback,
-            # qos_profile_sub)
             qos_profile = qos_profile_sub,
             callback_group = client_cb_group)
+        
+        ## Define - Single Publishers
+                
+        threshold_name = f"/px4_0/detector/out/threshold"
+        self.thres_pub = self.create_publisher(
+            Float32,
+            threshold_name,
+            qos_profile_pub)
+
+
+        ## Define - Lists of Subscribers/Publishers for Each Drone
 
         # Initialize List of Subs and Pubs for drones
         self.measurements_sub = [None] * self.num_agents
@@ -127,56 +145,47 @@ class Fault_Detector(Node):
         self.err_pub = [None] * self.num_agents
         self.residual_pub = [None] * self.num_agents
 
-        for i in range(self.num_agents):
+        for i, name_space in enumerate(self.model_ns):
             # Subscribers
-            sub_measurements_name = f"/px4_{i+1}/fmu/out/interagent_distances"
+            sub_measurements_name = f"/{name_space}/detector/interagent_distances"
             self.measurements_sub[i] = self.create_subscription(
                 Float32MultiArray,
                 sub_measurements_name,
                 partial(self.sub_measurements_callback, drone_ind=i),
-                # qos_profile_sub)
                 qos_profile = qos_profile_sub,
                 callback_group = client_cb_group)
             
             # sub_local_pos_name = f"/px4_{i+1}/fmu/out/vehicle_local_position"
-            sub_local_pos_name = f"/px4_{i+1}/fmu/in/trajectory_setpoint"
+            sub_local_pos_name = f"/{name_space}/detector/trajectory_setpoint"
             self.local_pos_sub[i] = self.create_subscription(
                 TrajectorySetpoint,
                 sub_local_pos_name,
                 partial(self.sub_local_pos_callback, drone_ind=i),
-                # qos_profile_sub)
                 qos_profile = qos_profile_sub,
                 callback_group = client_cb_group)
 
-            sub_spawn_offset_name = f"/px4_{i+1}/detector/in/spawn_offset"
+            sub_spawn_offset_name = f"/{name_space}/detector/spawn_offset"
             self.spawn_offset_sub[i] = self.create_subscription(
                 PointStamped,
                 sub_spawn_offset_name,
                 partial(self.sub_spawn_offset_callback, drone_ind=i),
-                # qos_profile_sub)
                 qos_profile = qos_profile_sub,
                 callback_group = client_cb_group)
             
             # Publishers
-            pub_err_name = f"/px4_{i+1}/fmu/out/reconstructed_error"
+            pub_err_name = f"/{name_space}/detector/reconstructed_error"
             self.err_pub[i] = self.create_publisher(
                 Float32MultiArray,
                 pub_err_name,
                 qos_profile_pub)
             
-            pub_res_name = f"/px4_{i+1}/fmu/out/residual"
+            pub_res_name = f"/{name_space}/detector/residual"
             self.residual_pub[i] = self.create_publisher(
                 Float32,
                 pub_res_name,
                 qos_profile_pub
             )
-            
-        
-        threshold_name = f"/px4_0/detector/out/threshold"
-        self.thres_pub = self.create_publisher(
-            Float32,
-            threshold_name,
-            qos_profile_pub)
+
 
         ##  Define: Callback Timer(s)
         self.admm_update_timer = self.create_timer(self.timer_period, 
@@ -189,8 +198,6 @@ class Fault_Detector(Node):
     
     # Sub: Inter-Agent Measurements
     def sub_measurements_callback(self, msg, drone_ind):
-        if self.admm_running:
-            return
         
         try:
             iam_array = np.array(msg.data).flatten()
@@ -201,8 +208,6 @@ class Fault_Detector(Node):
 
     # Sub: Local Drone Position
     def sub_local_pos_callback(self, msg, drone_ind):
-        if self.admm_running:
-            return
         
         try: # Extract msg
             self.agent_local_pos[drone_ind] = np.array([[msg.position[0]], [msg.position[1]], [msg.position[2]]]).reshape((self.dim, -1))
@@ -214,8 +219,6 @@ class Fault_Detector(Node):
 
     # Sub: Spawn Offset Position
     def sub_spawn_offset_callback(self, msg, drone_ind):
-        if self.admm_running:
-            return
 
         if self.spawn_offset_pos[drone_ind] is not None: # If spawn position is set, don't do anything
             return
@@ -228,8 +231,6 @@ class Fault_Detector(Node):
 
     # Sub: Formation of Swarm
     def sub_formation_callback(self, msg):
-        if self.admm_running:
-            return
         
         try:
             formation_arr = msg.data
@@ -242,8 +243,6 @@ class Fault_Detector(Node):
 
     # Sub: Virtual Leader NED Position
     def sub_centroid_callback(self, msg):
-        if self.admm_running:
-            return
         
         try: # Not in debugging mode
             self.centroid_pos = np.array([[msg.point.x], [msg.point.y], [msg.point.z]]).reshape((self.dim, -1))
@@ -253,8 +252,6 @@ class Fault_Detector(Node):
     
     # Sub: Adjacency Matrix of the graph
     def sub_adj_matrix(self, msg):
-        if self.admm_running:
-            return
         
         try: # Not in debugging mode
             self.adj_matrix = np.array(msg.data).reshape(self.num_agents, -1)
@@ -447,7 +444,6 @@ class Fault_Detector(Node):
         if unset_var:
             return
         
-        self.admm_running = True
         ##      Initialization  - Compute the relative distance of the agents wrt centroid
         for id, agent in enumerate(self.agents):
             self.get_rel_pos(id)
@@ -459,8 +455,6 @@ class Fault_Detector(Node):
         if not self.all_meas_set:
             return
         z = [(y[i] - self.exp_meas[i]) for i, _ in enumerate(y)]  
-
-        self.admm_running = False     
 
 
         ##      Minimization    - Primal Variable 1
@@ -567,7 +561,6 @@ class Fault_Detector(Node):
             ##          Update          - Post ADMM Subroutine Handling
             
             # Update Error Vectors
-            self.admm_running = True
             for agent_id, agent in enumerate(self.agents): 
                 for list_ind, nbr_id in enumerate(agent.get_neighbors()):
                     agent.x_star[nbr_id] = agent.x_star[nbr_id] + self.agents[nbr_id].x_bar
@@ -582,7 +575,6 @@ class Fault_Detector(Node):
             # Linearized Measurement Model
             self.exp_meas = self.measurement_model()
             self.R = self.get_Jacobian_matrix()
-            self.admm_running = False
 
             # Reset primal variables w after relinearization
             for agent in self.agents:
