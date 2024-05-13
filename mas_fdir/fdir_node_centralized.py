@@ -64,6 +64,10 @@ class Fault_Detector(Node):
         self.n_admm = 50
         self.curr_iter = 0
         self.rho = 0.5
+        self.lam_lim = 1
+        self.mu_lim = 1
+        self.lam_reset = [False] * self.num_agents
+        self.mu_reset = [False] * self.num_agents
         for agent_id, agent in enumerate(agents):
             # CVX variables
             agent.init_x_cp(cp.Variable((self.dim, 1)))
@@ -549,13 +553,20 @@ class Fault_Detector(Node):
                 constr_c = self.R[edge_ind][:, self.dim*id:self.dim*(id+1)] @ agent.x_bar - z[edge_ind]
                 for nbr_id in agent.get_neighbors():
                     constr_c += self.R[edge_ind][:, self.dim*nbr_id:self.dim*(nbr_id+1)] @ self.agents[nbr_id].w[id]
-                
                 agent.lam[self.edge_list[edge_ind]] = deepcopy(agent.lam[self.edge_list[edge_ind]] + self.rho * constr_c)
+                
+                # Check if cold start is required
+                if (np.linalg.norm(constr_c) > self.lam_lim):
+                    self.lam_reset[id] = True
 
             # Summation for d() constraint
             for _, nbr_id in enumerate(agent.get_neighbors()):
                 constr_d = agent.x_bar - agent.w[nbr_id]
                 agent.mu[nbr_id] = deepcopy(agent.mu[nbr_id] + self.rho * constr_d)
+
+                # Check if cold start is required
+                if (np.linalg.norm(constr_d) > self.mu_lim):
+                    self.mu_reset[id] = True
 
 
         ##      Update          - SCP Outer Loop Handling
@@ -564,17 +575,27 @@ class Fault_Detector(Node):
 
             ##          Update          - Post ADMM Subroutine Handling
             
-            # Update Error Vectors
             for agent_id, agent in enumerate(self.agents): 
+                
+                # Update Error Vectors
                 for list_ind, nbr_id in enumerate(agent.get_neighbors()):
                     agent.x_star[nbr_id] = agent.x_star[nbr_id] + self.agents[nbr_id].x_bar
                 
                 agent.x_star[agent_id] = agent.x_star[agent_id] + agent.x_bar
                 self.x_star[agent_id] = agent.x_star[agent_id]
                 
-                # Update position and x_dev
+                # Update position
                 self.p_est[agent_id] = self.p_reported[agent_id] + self.x_star[agent_id]
                 print(f" -> Agent {agent_id} Pos: {self.p_est[agent_id].flatten()}")
+
+                # Check if a reset flag was set
+                if (self.lam_reset[agent_id] or self.mu_reset[agent_id]):
+                    self.get_logger().info(f"RESET DUAL: Agent {agent_id} at Iteration {self.curr_iter}")
+                    agent.init_lam(np.zeros((1, 1)), np.arange(self.num_agents))
+                    agent.init_mu(np.zeros((self.dim, 1)), np.arange(self.num_agents))
+                    self.mu_reset[agent_id] = False
+                    self.lam_reset[agent_id] = False
+                    
             
             # Linearized Measurement Model
             self.exp_meas = self.measurement_model()
