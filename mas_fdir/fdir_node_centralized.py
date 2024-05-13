@@ -64,8 +64,9 @@ class Fault_Detector(Node):
         self.n_admm = 50
         self.curr_iter = 0
         self.rho = 0.5
-        self.lam_lim = 1
-        self.mu_lim = 1
+        self.alpha = 5.0
+        self.lam_lim = 100.0
+        self.mu_lim = 100.0
         self.lam_reset = [False] * self.num_agents
         self.mu_reset = [False] * self.num_agents
         for agent_id, agent in enumerate(agents):
@@ -141,6 +142,12 @@ class Fault_Detector(Node):
         self.thres_pub = self.create_publisher(
             Float32,
             threshold_name,
+            qos_profile_pub)
+        
+        pub_avg_err_name = f"/px4_0/detector/avg_err"
+        self.avg_err_pub = self.create_publisher(
+            Float32,
+            pub_avg_err_name,
             qos_profile_pub)
 
 
@@ -422,10 +429,19 @@ class Fault_Detector(Node):
             self.get_logger().info(f"Agent {id} - Residual\t: {self.residuals[id]}")
         return
     
+
+    # Publish swarm residual
+    def publish_swarm_residual(self):
+        msg = Float32()
+        msg.data = np.average(np.array(self.residuals))
+        self.avg_residual_pub.publish(msg)
+        return
+    
+    
     # Publish residual threshold
     def publish_threshold(self):
         msg = Float32()
-        msg.data = 1/self.rho
+        msg.data = 1/self.rho + self.alpha
         self.thres_pub.publish(msg)
         return
     
@@ -487,7 +503,7 @@ class Fault_Detector(Node):
             # Thresholding: Check that residual is under threshold
             this_res = np.linalg.norm(term1 + term2)
             self.residuals[id] = this_res
-            if (this_res*self.rho <= 1): # skip optimization
+            if (this_res <= ((1/self.rho) + self.alpha)): # skip optimization
                 agent.x_bar = deepcopy(-agent.x_star[id])
             else:
             # Optimization: Solve minimization problem for x_bar if over threshold
@@ -554,7 +570,9 @@ class Fault_Detector(Node):
                 for nbr_id in agent.get_neighbors():
                     constr_c += self.R[edge_ind][:, self.dim*nbr_id:self.dim*(nbr_id+1)] @ self.agents[nbr_id].w[id]
                 agent.lam[self.edge_list[edge_ind]] = deepcopy(agent.lam[self.edge_list[edge_ind]] + self.rho * constr_c)
-                
+            
+                self.get_logger().info(f" ---> Agent: {id}, EdgeIDX: {edge_ind}, Constraints c: {constr_c}")
+                    
                 # Check if cold start is required
                 if (np.linalg.norm(constr_c) > self.lam_lim):
                     self.lam_reset[id] = True
@@ -563,6 +581,8 @@ class Fault_Detector(Node):
             for _, nbr_id in enumerate(agent.get_neighbors()):
                 constr_d = agent.x_bar - agent.w[nbr_id]
                 agent.mu[nbr_id] = deepcopy(agent.mu[nbr_id] + self.rho * constr_d)
+                
+                self.get_logger().info(f" ---> Agent: {id}, Neighbor: {nbr_id}, Constraints d: {constr_d}")
 
                 # Check if cold start is required
                 if (np.linalg.norm(constr_d) > self.mu_lim):
@@ -611,6 +631,7 @@ class Fault_Detector(Node):
             self.publish_err(id)
             self.publish_residual(id)
         self.publish_threshold()
+        self.publish_swarm_residual()
 
         self.curr_iter += 1
         return

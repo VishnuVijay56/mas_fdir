@@ -23,7 +23,7 @@ def generate_launch_description():
             os.path.join(get_package_share_directory('gz_interagent_meas'), 'launch', 'interagent_meas.launch.py')),
         launch_arguments={
             'gz_world_name': "AbuDhabi",
-            'gz_model_names': "[x500_1, x500_2, x500_3, x500_4, x500_5, x500_6, x500_7]",
+            'gz_model_names': "[x500g_1, x500g_2, x500r_3, x500g_4, x500r_5, x500g_6, x500g_7]",
 			'ros_ns': ros_ns_str_cpp,
         }.items(),
     )
