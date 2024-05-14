@@ -65,6 +65,7 @@ class Fault_Detector(Node):
         self.curr_iter = 0
         self.rho = 0.5
         self.alpha = 5.0
+        self.err_thresh = 0.6
         self.lam_lim = 10000.0
         self.mu_lim = 10000.0
         self.lam_reset = [False] * self.num_agents
@@ -410,7 +411,7 @@ class Fault_Detector(Node):
         # Current error = outer loop error + inner loop error
         this_x = self.x_star[id].flatten() + self.agents[id].x_bar.flatten()
         this_x_norm = np.linalg.norm(this_x)
-        this_x = np.hstack((this_x,np.array(this_x_norm)))
+        this_x = np.hstack((this_x,np.array(this_x_norm/self.err_thresh)))
         if id == 2:
             self.get_logger().info(f"Agent {id} - Error\t: {this_x}")
 
@@ -443,7 +444,7 @@ class Fault_Detector(Node):
         sum_norm_err = 0
         for id, _ in enumerate(self.agents):
             sum_norm_err += np.linalg.norm(self.x_star[id].flatten() + self.agents[id].x_bar.flatten())
-        msg.data = (sum_norm_err / self.num_agents)
+        msg.data = (sum_norm_err / (self.err_thresh))
         self.avg_err_pub.publish(msg)
         return
         
@@ -451,7 +452,7 @@ class Fault_Detector(Node):
     # Publish residual threshold
     def publish_threshold(self):
         msg = Float32()
-        msg.data = 1/self.rho + self.alpha
+        msg.data = 1.0#self.err_thresh #1/self.rho + self.alpha
         self.thres_pub.publish(msg)
         return
     
