@@ -65,8 +65,8 @@ class Fault_Detector(Node):
         self.curr_iter = 0
         self.rho = 0.5
         self.alpha = 5.0
-        self.lam_lim = 100.0
-        self.mu_lim = 100.0
+        self.lam_lim = 10000.0
+        self.mu_lim = 10000.0
         self.lam_reset = [False] * self.num_agents
         self.mu_reset = [False] * self.num_agents
         for agent_id, agent in enumerate(agents):
@@ -431,12 +431,22 @@ class Fault_Detector(Node):
     
 
     # Publish swarm residual
-    def publish_swarm_residual(self):
+    # def publish_swarm_residual(self):
+    #     msg = Float32()
+    #     msg.data = np.average(np.array(self.residuals))
+    #     self.avg_residual_pub.publish(msg)
+    #     return
+
+
+    def publish_avg_norm_err(self):
         msg = Float32()
-        msg.data = np.average(np.array(self.residuals))
-        self.avg_residual_pub.publish(msg)
+        sum_norm_err = 0
+        for id, _ in enumerate(self.agents):
+            sum_norm_err += np.linalg.norm(self.x_star[id].flatten() + self.agents[id].x_bar.flatten())
+        msg.data = (sum_norm_err / self.num_agents)
+        self.avg_err_pub.publish(msg)
         return
-    
+        
     
     # Publish residual threshold
     def publish_threshold(self):
@@ -631,7 +641,7 @@ class Fault_Detector(Node):
             self.publish_err(id)
             self.publish_residual(id)
         self.publish_threshold()
-        self.publish_swarm_residual()
+        self.publish_avg_norm_err()
 
         self.curr_iter += 1
         return
