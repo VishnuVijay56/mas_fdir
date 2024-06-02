@@ -53,7 +53,7 @@ class Fault_Detector(Node):
 
         ## Initialization - Specific to ROS2 Implementation
         self.num_agents = len(self.model_ns)
-        self.timer_period = 0.1  # seconds
+        self.timer_period = 0.5  # seconds
         self.centroid_pos = None
         self.agent_local_pos = [None] * self.num_agents
         self.formation_msg = [None] * self.num_agents
@@ -216,8 +216,10 @@ class Fault_Detector(Node):
     def sub_measurements_callback(self, msg, drone_ind):
         
         try:
-            iam_array = np.array(msg.data).flatten()
+            iam_array = deepcopy(np.array(msg.data).flatten())
             self.agents[drone_ind].set_measurements(iam_array)
+            #self.get_logger().info(f"{iam_array}: Agent" + str(drone_ind))
+
         except:
             self.get_logger().info("Exception: Issue with getting Inter-Agent Measurements of drone #" + str(drone_ind))
 
@@ -367,8 +369,8 @@ class Fault_Detector(Node):
         #               f"\n\tCentroid Pos\t: {self.centroid_pos.flatten()}" + \
         #               f"\n\tSpawn Offset\t: {self.spawn_offset_pos[id].flatten()}"                      
         # self.get_logger().info(log_message)
-        if id == 2:
-            self.get_logger().info(f"Agent 2 : Rel Pos {rel_pos.flatten()}")
+        #if id == 2:
+        #self.get_logger().info(f"Agent {id} : Rel Pos {rel_pos.flatten()}")
 
         # Assign
         self.agents[id].position = rel_pos
@@ -412,8 +414,8 @@ class Fault_Detector(Node):
         this_x = self.x_star[id].flatten() + self.agents[id].x_bar.flatten()
         this_x_norm = np.linalg.norm(this_x)
         this_x = np.hstack((this_x,np.array(this_x_norm/self.err_thresh)))
-        if id == 2:
-            self.get_logger().info(f"Agent {id} - Error\t: {this_x}")
+        # if id == 2:
+        #     self.get_logger().info(f"Agent {id} - Error\t: {this_x}")
 
         # Send off error
         msg.data = this_x.tolist()
@@ -426,8 +428,8 @@ class Fault_Detector(Node):
         msg = Float32()
         msg.data = self.residuals[id]
         self.residual_pub[id].publish(msg)
-        if id == 2:
-            self.get_logger().info(f"Agent {id} - Residual\t: {self.residuals[id]}")
+        # if id == 2:
+        #     self.get_logger().info(f"Agent {id} - Residual\t: {self.residuals[id]}")
         return
     
 
@@ -459,7 +461,7 @@ class Fault_Detector(Node):
 
     # Calls the ADMM Update Step
     def admm_update(self):
-        
+        time_stamp = Clock().now()
         ##      Check           - See if variables are set before proceeding
 
         unset_var = False
@@ -538,8 +540,8 @@ class Fault_Detector(Node):
                     
                 prob1 = cp.Problem(cp.Minimize(objective), [])
                 prob1.solve(verbose=False)
-                if prob1.status != cp.OPTIMAL:
-                    self.get_logger().warning(f"~ERROR~ Problem 1: Agent {id} - Optimization Status {prob1.status} @ {self.curr_iter}th iteration")
+                # if prob1.status != cp.OPTIMAL:
+                #     self.get_logger().warning(f"~ERROR~ Problem 1: Agent {id} - Optimization Status {prob1.status} @ {self.curr_iter}th iteration")
 
                 agent.x_bar = deepcopy(np.array(agent.x_cp.value).reshape((-1, 1)))
 
@@ -565,8 +567,8 @@ class Fault_Detector(Node):
                 
             prob2 = cp.Problem(cp.Minimize(objective), [])
             prob2.solve(verbose=False)
-            if prob2.status != cp.OPTIMAL:
-                self.get_logger().warning(f"~ERROR~ Problem 2: Agent {id} - Optimization Status {prob2.status} @ {self.curr_iter}th iteration")
+            #if prob2.status != cp.OPTIMAL:
+                #self.get_logger().warning(f"~ERROR~ Problem 2: Agent {id} - Optimization Status {prob2.status} @ {self.curr_iter}th iteration")
 
             for _, nbr_id in enumerate(agent.get_neighbors()):
                 agent.w[nbr_id] = deepcopy(np.array(agent.w_cp[nbr_id].value).reshape((-1, 1)))
@@ -582,7 +584,7 @@ class Fault_Detector(Node):
                     constr_c += self.R[edge_ind][:, self.dim*nbr_id:self.dim*(nbr_id+1)] @ self.agents[nbr_id].w[id]
                 agent.lam[self.edge_list[edge_ind]] = deepcopy(agent.lam[self.edge_list[edge_ind]] + self.rho * constr_c)
             
-                self.get_logger().info(f" ---> Agent: {id}, EdgeIDX: {edge_ind}, Constraints c: {constr_c}")
+                #self.get_logger().info(f" ---> Agent: {id}, EdgeIDX: {edge_ind}, Constraints c: {constr_c}")
                     
                 # Check if cold start is required
                 if (np.linalg.norm(constr_c) > self.lam_lim):
@@ -593,7 +595,7 @@ class Fault_Detector(Node):
                 constr_d = agent.x_bar - agent.w[nbr_id]
                 agent.mu[nbr_id] = deepcopy(agent.mu[nbr_id] + self.rho * constr_d)
                 
-                self.get_logger().info(f" ---> Agent: {id}, Neighbor: {nbr_id}, Constraints d: {constr_d}")
+                #self.get_logger().info(f" ---> Agent: {id}, Neighbor: {nbr_id}, Constraints d: {constr_d}")
 
                 # Check if cold start is required
                 if (np.linalg.norm(constr_d) > self.mu_lim):
@@ -602,7 +604,7 @@ class Fault_Detector(Node):
 
         ##      Update          - SCP Outer Loop Handling
         if ((self.curr_iter % self.n_admm) == 0) and ((self.curr_iter - self.n_admm) >= 0):
-            self.get_logger().info(" ---> SCP Step: Relinearization, Error Vector Updating, and Primal Variable w Resetting")
+            #self.get_logger().info(" ---> SCP Step: Relinearization, Error Vector Updating, and Primal Variable w Resetting")
 
             ##          Update          - Post ADMM Subroutine Handling
             
@@ -617,11 +619,11 @@ class Fault_Detector(Node):
                 
                 # Update position
                 self.p_est[agent_id] = self.p_reported[agent_id] + self.x_star[agent_id]
-                print(f" -> Agent {agent_id} Pos: {self.p_est[agent_id].flatten()}")
+                #print(f" -> Agent {agent_id} Pos: {self.p_est[agent_id].flatten()}")
 
                 # Check if a reset flag was set
                 if (self.lam_reset[agent_id] or self.mu_reset[agent_id]):
-                    self.get_logger().info(f"RESET DUAL: Agent {agent_id} at Iteration {self.curr_iter}")
+                    #self.get_logger().info(f"RESET DUAL: Agent {agent_id} at Iteration {self.curr_iter}")
                     agent.init_lam(np.zeros((1, 1)), np.arange(self.num_agents))
                     agent.init_mu(np.zeros((self.dim, 1)), np.arange(self.num_agents))
                     self.mu_reset[agent_id] = False
@@ -645,6 +647,8 @@ class Fault_Detector(Node):
         self.publish_avg_norm_err()
 
         self.curr_iter += 1
+        total_time  = Clock().now() - time_stamp
+        self.get_logger().info(f"ADMM time: {total_time}")
         return
     
 
@@ -674,14 +678,15 @@ def main():
     #                  np.array([[-2.0,  2.0,  0.5]]).T]
 
     Formation =     [
-                     np.array([[4.0*np.cos(np.pi/180*0),     4.0*np.sin(np.pi/180*0),    -2.0]]).T,
-                     np.array([[4.0*np.cos(np.pi/180*60),    4.0*np.sin(np.pi/180*60),   0.0]]).T,
-                     np.array([[4.0*np.cos(np.pi/180*120),   4.0*np.sin(np.pi/180*120),  -2.0]]).T,
-                     np.array([[4.0*np.cos(np.pi/180*180),   4.0*np.sin(np.pi/180*180),  0.0]]).T,
-                     np.array([[4.0*np.cos(np.pi/180*240),   4.0*np.sin(np.pi/180*240),  -2.0]]).T,
-                     np.array([[4.0*np.cos(np.pi/180*300),   4.0*np.sin(np.pi/180*300),  0.0]]).T,
-                     np.array([[0.0,  0.0, -1.0]]).T]
+                     np.array([[2.0*np.cos(np.pi/180*60),     2.0*np.sin(np.pi/180*60),    0.0]]).T,
+                     np.array([[2.0*np.cos(np.pi/180*180),    2.0*np.sin(np.pi/180*180),   0.0]]).T,
+                     np.array([[2.0*np.cos(np.pi/180*300),   2.0*np.sin(np.pi/180*300),  0.0]]).T,
+                     np.array([[1.0*np.cos(np.pi/180*0),   1.0*np.sin(np.pi/180*0),  0.0]]).T,
+                     np.array([[1.0*np.cos(np.pi/180*120),   1.0*np.sin(np.pi/180*120),  0.0]]).T,
+                     np.array([[1.0*np.cos(np.pi/180*240),   1.0*np.sin(np.pi/180*240),  0.0]]).T,
+                     np.array([[0.0,  0.0, 0.1]]).T]
     
+ 
     # Adjacency =     np.array([[0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
     #                           [1.0, 0.0, 1.0, 1.0, 1.0, 1.0],
     #                           [1.0, 1.0, 0.0, 1.0, 1.0, 1.0],

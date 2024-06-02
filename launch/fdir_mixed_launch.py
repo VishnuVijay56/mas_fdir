@@ -27,13 +27,13 @@ def generate_launch_description():
         }.items(),
     )
 
-	# fdir_node = Node(
-	# 	package='mas_fdir',
-	#     executable='fdir_node_centralized',
-	#     name='fdir_node_centralized',
-	# 	parameters = [
-	# 		{'ros_ns' : ros_ns_str}
-	# 	])
+	fdir_node = Node(
+		package='mas_fdir',
+	    executable='fdir_node_centralized',
+	    name='fdir_node_centralized',
+		parameters = [
+			{'ros_ns' : ros_ns_str}
+		])
 	
 	foxglove_studio = ExecuteProcess(cmd=["foxglove-studio"])
 
@@ -43,7 +43,7 @@ def generate_launch_description():
         "launch/foxglove_bridge.launch",))
     )
 	return LaunchDescription([
-		#fdir_node,
+		fdir_node,
 		interagent_pub,
 		foxglove_bridge,
 		foxglove_studio
