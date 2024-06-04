@@ -25,6 +25,10 @@ from px4_msgs.msg import VehicleLocalPosition, VehicleGlobalPosition, Trajectory
 from geometry_msgs.msg import PointStamped, TransformStamped
 from std_msgs.msg import UInt8, Bool, Float32MultiArray, Float32
 
+import yaml
+from pathlib import Path
+import os
+
 
 class Fault_Detector(Node):
 
@@ -619,7 +623,7 @@ class Fault_Detector(Node):
                 
                 # Update position
                 self.p_est[agent_id] = self.p_reported[agent_id] + self.x_star[agent_id]
-                #print(f" -> Agent {agent_id} Pos: {self.p_est[agent_id].flatten()}")
+                # print(f" -> Agent {agent_id} Pos: {self.p_est[agent_id].flatten()}")
 
                 # Check if a reset flag was set
                 if (self.lam_reset[agent_id] or self.mu_reset[agent_id]):
@@ -659,7 +663,7 @@ def main():
     # Initializations
     DEBUG = False
     dim = 3
-    num_agents = 7
+    num_agents = 10
     Agents = [None] * num_agents
     # Formation =     [
     #                  np.array([[3.0*np.cos(np.pi/180*0),     3.0*np.sin(np.pi/180*0),    0]]).T,
@@ -677,16 +681,28 @@ def main():
     #                  np.array([[-2.0, -2.0,  0.5]]).T,
     #                  np.array([[-2.0,  2.0,  0.5]]).T]
 
+    # Formation =     [
+    #                  np.array([[2.0*np.cos(np.pi/180*60),     2.0*np.sin(np.pi/180*60),    0.0]]).T,
+    #                  np.array([[2.0*np.cos(np.pi/180*180),    2.0*np.sin(np.pi/180*180),   0.0]]).T,
+    #                  np.array([[2.0*np.cos(np.pi/180*300),   2.0*np.sin(np.pi/180*300),  0.0]]).T,
+    #                  np.array([[1.0*np.cos(np.pi/180*0),   1.0*np.sin(np.pi/180*0),  0.0]]).T,
+    #                  np.array([[1.0*np.cos(np.pi/180*120),   1.0*np.sin(np.pi/180*120),  0.0]]).T,
+    #                  np.array([[1.0*np.cos(np.pi/180*240),   1.0*np.sin(np.pi/180*240),  0.0]]).T,
+    #                  np.array([[0.0,  0.0, 0.1]]).T]
+    
     Formation =     [
                      np.array([[2.0*np.cos(np.pi/180*60),     2.0*np.sin(np.pi/180*60),    0.0]]).T,
                      np.array([[2.0*np.cos(np.pi/180*180),    2.0*np.sin(np.pi/180*180),   0.0]]).T,
                      np.array([[2.0*np.cos(np.pi/180*300),   2.0*np.sin(np.pi/180*300),  0.0]]).T,
+                     np.array([[2.0*np.cos(np.pi/180*0),     2.0*np.sin(np.pi/180*0),    0.0]]).T,
+                     np.array([[2.0*np.cos(np.pi/180*120),    2.0*np.sin(np.pi/180*120),   0.0]]).T,
+                     np.array([[2.0*np.cos(np.pi/180*240),   2.0*np.sin(np.pi/180*240),  0.0]]).T,
                      np.array([[1.0*np.cos(np.pi/180*0),   1.0*np.sin(np.pi/180*0),  0.0]]).T,
                      np.array([[1.0*np.cos(np.pi/180*120),   1.0*np.sin(np.pi/180*120),  0.0]]).T,
                      np.array([[1.0*np.cos(np.pi/180*240),   1.0*np.sin(np.pi/180*240),  0.0]]).T,
                      np.array([[0.0,  0.0, 0.1]]).T]
-    
- 
+
+
     # Adjacency =     np.array([[0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
     #                           [1.0, 0.0, 1.0, 1.0, 1.0, 1.0],
     #                           [1.0, 1.0, 0.0, 1.0, 1.0, 1.0],
@@ -694,13 +710,50 @@ def main():
     #                           [1.0, 1.0, 1.0, 1.0, 0.0, 1.0],
     #                           [1.0, 1.0, 1.0, 1.0, 1.0, 0.0]], dtype=np.float64)
     
-    Adjacency   =   np.array([[0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                              [1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                              [1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0],
-                              [1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0],
-                              [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0],
-                              [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0],
-                              [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0]], dtype=np.float64)
+    # Adjacency   =   np.array([[0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    #                           [1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    #                           [1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0],
+    #                           [1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0],
+    #                           [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0],
+    #                           [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0],
+    #                           [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0]], dtype=np.float64)
+    
+    Adjacency   =   np.array([[0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                              [1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                              [1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                              [1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                              [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                              [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0],
+                              [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0],
+                              [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0],
+                              [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0],
+                              [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0],], dtype=np.float64)
+    
+
+    # yaml_dict 	= 	yaml.safe_load(Path(os.path.join("/home/user/work/ros2_ws/src/px4-multiagent-offboard","config/mixedexp_3d_10a.yaml")).read_text())
+
+    # formation   =   [np.zeros((3,1),dtype=np.float64) for i in range(len(yaml_dict['ros_ns_str']))]
+
+    # for index, x in enumerate(formation):
+    #     if isinstance(yaml_dict['formation'][3*index:3], str):
+        #     print(formation[index[0]])
+			# formation[index[0]]	=   eval(yaml_dict['formation'][index[0]])
+
+	# 	elif isinstance(yaml_dict['formation'][index[0]], float) or isinstance(yaml_dict['formation'][index[0]], int):
+	# 		formation[index[0]]	=   np.float64(yaml_dict['formation'][index[0]])
+
+	# formation 	=	np.ndarray.tolist(formation)
+
+	# adjacency   =   np.zeros((len(yaml_dict['ros_ns_str'])*len(yaml_dict['ros_ns_str'])),dtype=np.float64)
+
+	# for index, x in np.ndenumerate(adjacency):
+	# 	if isinstance(yaml_dict['adjacency'][index[0]], float) or isinstance(yaml_dict['adjacency'][index[0]], int):
+	# 		adjacency[index[0]]	=   np.float64(yaml_dict['adjacency'][index[0]])
+
+	# adjacency 	=	np.ndarray.tolist(adjacency)
+
+
+
     
     # Edges =         [(0,1), (0,2), (0,3), 
     #                  (0,4), (0,5), (1,2),
@@ -714,22 +767,44 @@ def main():
     #                  (3,2), (4,2), (5,2),
     #                  (4,3), (5,3), (5,4)] # these edges are directed
     
+    # Edges =         [(0,1), (0,2), (0,3), 
+    #                  (0,4), (0,5), (0,6),
+    #                  (1,2), (1,3), (1,4),
+    #                  (1,5), (1,6), (2,3),
+    #                  (2,4), (2,5), (2,6),
+    #                  (3,4), (3,5), (3,6),
+    #                  (4,5), (4,6), (5,6),
+                    
+    #                  (1,0), (2,0), (3,0), 
+    #                  (4,0), (5,0), (6,0),
+    #                  (2,1), (3,1), (4,1),
+    #                  (5,1), (6,1), (3,2),
+    #                  (4,2), (5,2), (6,2),
+    #                  (4,3), (5,3), (6,3),
+    #                  (5,4), (6,4), (6,5)] # these edges are directed
+    
     Edges =         [(0,1), (0,2), (0,3), 
                      (0,4), (0,5), (0,6),
+                     (0,7), (0,8), (0,9),
                      (1,2), (1,3), (1,4),
-                     (1,5), (1,6), (2,3),
+                     (1,5), (1,6), (1,7),
+                     (1,8), (1,9), (2,3),
                      (2,4), (2,5), (2,6),
+                     (2,7), (2,8), (2,9),
                      (3,4), (3,5), (3,6),
-                     (4,5), (4,6), (5,6),
-                    
-                     (1,0), (2,0), (3,0), 
-                     (4,0), (5,0), (6,0),
-                     (2,1), (3,1), (4,1),
-                     (5,1), (6,1), (3,2),
-                     (4,2), (5,2), (6,2),
-                     (4,3), (5,3), (6,3),
-                     (5,4), (6,4), (6,5)] # these edges are directed
+                     (3,7), (3,8), (3,9),
+                     (4,5), (4,6), (4,7),
+                     (4,8), (4,9), (5,6),
+                     (5,7), (5,8), (5,9),
+                     (6,7), (6,8), (6,9),
+                     (7,8), (7,9), (8,9)] # these edges are directed
     
+    Edges_flip  =   deepcopy(Edges)
+    for idx, dir_edge in enumerate(Edges_flip):
+        Edges_flip[idx]    =   dir_edge[::-1]
+
+    Edges   =   Edges+Edges_flip
+
     # Graph
     for id, _ in enumerate(Agents): # Create agent objects with nbr and edge lists
         this_agent = MyAgent(agent_id=id,
