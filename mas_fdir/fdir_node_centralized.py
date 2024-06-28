@@ -64,16 +64,28 @@ class Fault_Detector(Node):
         self.spawn_offset_pos = [None] * self.num_agents
 
 
+        ##  Initialization - Thresholds and Related Variables
+        # Extra Residual Threshold
+        self.alpha = 5.0
+        # Error Threshold
+        self.err_thresh = 0.6
+        # Dual Variable Threshold
+        self.check_dual_var = False
+        self.lam_lim = 2.0
+        self.mu_lim = 3e-5
+        self.lam_reset = [False] * self.num_agents
+        self.mu_reset = [False] * self.num_agents
+        # Linearized Measurement Model Threshold
+        self.check_R_diff = True
+        self.R_old = self.get_Jacobian_matrix()
+        self.R_norm_diff = 0.0
+        self.R_diff_thresh = 3.0
+
+
         ##  Initialization - Optimization Parameters
         self.n_admm = 50
         self.curr_iter = 0
         self.rho = 0.5
-        self.alpha = 5.0
-        self.err_thresh = 0.6
-        self.lam_lim = 10000.0
-        self.mu_lim = 10000.0
-        self.lam_reset = [False] * self.num_agents
-        self.mu_reset = [False] * self.num_agents
         for agent_id, agent in enumerate(agents):
             # CVX variables
             agent.init_x_cp(cp.Variable((self.dim, 1)))
@@ -93,7 +105,7 @@ class Fault_Detector(Node):
         self.p_reported = [None] * self.num_agents                                      # Reported positions of agents
         self.edges_from_adj()
         self.exp_meas = self.measurement_model()                                        # Expected measurements given positions and error
-        self.R = self.get_Jacobian_matrix()                                             # Jacobian of measurement model
+        self.R = deepcopy(self.R_old)                                                   # Jacobian of measurement model
         self.residuals = [None] * self.num_agents                                       # Residuals of each agent to be checked against the threshold
 
 
@@ -363,6 +375,20 @@ class Fault_Detector(Node):
         return R
     
 
+    # Help: Computes matrix norm of the difference between old and new R matrices
+    def get_Jacobian_matrix_norm_diff(self):
+
+        old_matrix = self.R_old[0]
+        for row in self.R_old[1:]:
+            old_matrix = np.vstack((old_matrix, row))
+
+        new_matrix = self.R[0]
+        for row in self.R[1:]:
+            new_matrix = np.vstack((new_matrix, row))
+
+        self.R_norm_diff = np.linalg.norm(new_matrix - old_matrix)
+    
+
     # Help: Computes relative position of drones wrt centroid
     def get_rel_pos(self, id):
         # Compute
@@ -586,23 +612,25 @@ class Fault_Detector(Node):
                 constr_c = self.R[edge_ind][:, self.dim*id:self.dim*(id+1)] @ agent.x_bar - z[edge_ind]
                 for nbr_id in agent.get_neighbors():
                     constr_c += self.R[edge_ind][:, self.dim*nbr_id:self.dim*(nbr_id+1)] @ self.agents[nbr_id].w[id]
-                agent.lam[self.edge_list[edge_ind]] = deepcopy(agent.lam[self.edge_list[edge_ind]] + self.rho * constr_c)
+                new_lam = agent.lam[self.edge_list[edge_ind]] + self.rho * constr_c
+                agent.lam[self.edge_list[edge_ind]] = deepcopy(new_lam)
             
                 #self.get_logger().info(f" ---> Agent: {id}, EdgeIDX: {edge_ind}, Constraints c: {constr_c}")
                     
                 # Check if cold start is required
-                if (np.linalg.norm(constr_c) > self.lam_lim):
+                if (np.linalg.norm(new_lam) > self.lam_lim):
                     self.lam_reset[id] = True
 
             # Summation for d() constraint
             for _, nbr_id in enumerate(agent.get_neighbors()):
                 constr_d = agent.x_bar - agent.w[nbr_id]
-                agent.mu[nbr_id] = deepcopy(agent.mu[nbr_id] + self.rho * constr_d)
+                new_mu = agent.mu[nbr_id] + self.rho * constr_d
+                agent.mu[nbr_id] = deepcopy(new_mu)
                 
                 #self.get_logger().info(f" ---> Agent: {id}, Neighbor: {nbr_id}, Constraints d: {constr_d}")
 
                 # Check if cold start is required
-                if (np.linalg.norm(constr_d) > self.mu_lim):
+                if (np.linalg.norm(new_mu) > self.mu_lim):
                     self.mu_reset[id] = True
 
 
@@ -611,6 +639,12 @@ class Fault_Detector(Node):
             #self.get_logger().info(" ---> SCP Step: Relinearization, Error Vector Updating, and Primal Variable w Resetting")
 
             ##          Update          - Post ADMM Subroutine Handling
+
+            # Linearized Measurement Model
+            self.exp_meas = self.measurement_model()
+            self.R_old = deepcopy(self.R)
+            self.R = self.get_Jacobian_matrix()
+            self.get_Jacobian_matrix_norm_diff()
             
             for agent_id, agent in enumerate(self.agents): 
                 
@@ -625,18 +659,16 @@ class Fault_Detector(Node):
                 self.p_est[agent_id] = self.p_reported[agent_id] + self.x_star[agent_id]
                 # print(f" -> Agent {agent_id} Pos: {self.p_est[agent_id].flatten()}")
 
-                # Check if a reset flag was set
-                if (self.lam_reset[agent_id] or self.mu_reset[agent_id]):
+                # Check if: (1) the norm difference in R exceed prescribed threshold OR 
+                #           (2) a reset flag for dual variables was set
+                if (self.check_R_diff and (self.R_norm_diff >= self.R_diff_thresh)) or \
+                   (self.check_dual_var and (self.lam_reset[agent_id] or self.mu_reset[agent_id])):
                     #self.get_logger().info(f"RESET DUAL: Agent {agent_id} at Iteration {self.curr_iter}")
                     agent.init_lam(np.zeros((1, 1)), np.arange(self.num_agents))
                     agent.init_mu(np.zeros((self.dim, 1)), np.arange(self.num_agents))
                     self.mu_reset[agent_id] = False
                     self.lam_reset[agent_id] = False
                     
-            
-            # Linearized Measurement Model
-            self.exp_meas = self.measurement_model()
-            self.R = self.get_Jacobian_matrix()
 
             # Reset primal variables w after relinearization
             for agent in self.agents:
