@@ -65,6 +65,8 @@ class Fault_Detector(Node):
 
 
         ##  Initialization - Thresholds and Related Variables
+        # Check Residual for Optimization Skip
+        self.use_res_thresh = False
         # Extra Residual Threshold
         self.alpha = 5.0
         # Error Threshold
@@ -527,26 +529,33 @@ class Fault_Detector(Node):
         ##      Minimization    - Primal Variable 1
         
         for id, agent in enumerate(self.agents):
-            # Thresholding: Summation over edges
-            term1 = 0
-            for i, edge_ind in enumerate(agent.get_edge_indices()):
-                R_k = self.R[edge_ind]
-                constr_c = R_k[:, self.dim*id:self.dim*(id+1)] @ (-agent.x_star[id]) - z[edge_ind]
-                for nbr_id in agent.get_neighbors():
-                    constr_c += R_k[:, self.dim*id:self.dim*(id+1)] @ agent.w[nbr_id]
+            
+            # Compute residual value if residual flag is set
+            if self.use_res_thresh:
+                # Thresholding: Summation over edges
+                term1 = 0
+                for i, edge_ind in enumerate(agent.get_edge_indices()):
+                    R_k = self.R[edge_ind]
+                    constr_c = R_k[:, self.dim*id:self.dim*(id+1)] @ (-agent.x_star[id]) - z[edge_ind]
+                    for nbr_id in agent.get_neighbors():
+                        constr_c += R_k[:, self.dim*id:self.dim*(id+1)] @ agent.w[nbr_id]
+                    
+                    term1 += R_k[:, self.dim*id:self.dim*(id+1)].T @ (constr_c + (agent.lam[self.edge_list[edge_ind]] / self.rho))
                 
-                term1 += R_k[:, self.dim*id:self.dim*(id+1)].T @ (constr_c + (agent.lam[self.edge_list[edge_ind]] / self.rho))
+                # Thresholding: Summation over neighbors
+                term2 = 0
+                for nbr_id in agent.get_neighbors():
+                    constr_d = -agent.x_star[id] - agent.w[nbr_id]
+                    term2 += constr_d + (agent.mu[nbr_id] / self.rho)
+                
+                # Thresholding: Check that residual is under threshold
+                this_res = np.linalg.norm(term1 + term2)
+                self.residuals[id] = this_res
             
-            # Thresholding: Summation over neighbors
-            term2 = 0
-            for nbr_id in agent.get_neighbors():
-                constr_d = -agent.x_star[id] - agent.w[nbr_id]
-                term2 += constr_d + (agent.mu[nbr_id] / self.rho)
-            
-            # Thresholding: Check that residual is under threshold
-            this_res = np.linalg.norm(term1 + term2)
-            self.residuals[id] = this_res
-            if (this_res <= ((1/self.rho) + self.alpha)): # skip optimization
+            # Check if:     (1) residual flag is set
+            #               (2) value of residual falls under threshold
+            # If either is false, solve optimization problem
+            if (self.use_res_thresh) and (this_res <= ((1/self.rho) + self.alpha)): # skip optimization
                 agent.x_bar = deepcopy(-agent.x_star[id])
             else:
             # Optimization: Solve minimization problem for x_bar if over threshold
@@ -618,7 +627,7 @@ class Fault_Detector(Node):
                 #self.get_logger().info(f" ---> Agent: {id}, EdgeIDX: {edge_ind}, Constraints c: {constr_c}")
                     
                 # Check if cold start is required
-                if (np.linalg.norm(new_lam) > self.lam_lim):
+                if (np.linalg.norm(new_lam) >= self.lam_lim):
                     self.lam_reset[id] = True
 
             # Summation for d() constraint
@@ -630,7 +639,7 @@ class Fault_Detector(Node):
                 #self.get_logger().info(f" ---> Agent: {id}, Neighbor: {nbr_id}, Constraints d: {constr_d}")
 
                 # Check if cold start is required
-                if (np.linalg.norm(new_mu) > self.mu_lim):
+                if (np.linalg.norm(new_mu) >= self.mu_lim):
                     self.mu_reset[id] = True
 
 
@@ -662,7 +671,7 @@ class Fault_Detector(Node):
                 # Check if: (1) the norm difference in R exceed prescribed threshold OR 
                 #           (2) a reset flag for dual variables was set
                 if (self.check_R_diff and (self.R_norm_diff >= self.R_diff_thresh)) or \
-                   (self.check_dual_var and (self.lam_reset[agent_id] or self.mu_reset[agent_id])):
+                        (self.check_dual_var and (self.lam_reset[agent_id] or self.mu_reset[agent_id])):
                     #self.get_logger().info(f"RESET DUAL: Agent {agent_id} at Iteration {self.curr_iter}")
                     agent.init_lam(np.zeros((1, 1)), np.arange(self.num_agents))
                     agent.init_mu(np.zeros((self.dim, 1)), np.arange(self.num_agents))
