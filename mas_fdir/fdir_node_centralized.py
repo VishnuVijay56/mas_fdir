@@ -77,6 +77,14 @@ class Fault_Detector(Node):
         self.mu_lim = 3e-5
         self.lam_reset = [False] * self.num_agents
         self.mu_reset = [False] * self.num_agents
+
+        # 240728 MH revise
+        self.edges_from_adj()
+        print(self.edge_list)
+
+        self.p_est = [agents[i].get_pos() for i in range(self.num_agents)]
+        self.x_star = [np.zeros((self.dim, 1)) for i in range(self.num_agents)]
+
         # Linearized Measurement Model Threshold
         self.check_R_diff = True
         self.R_old = self.get_Jacobian_matrix()
@@ -102,10 +110,10 @@ class Fault_Detector(Node):
 
 
         ##  Initialization - Measurements and Positions
-        self.x_star = [np.zeros((self.dim, 1)) for i in range(self.num_agents)]         # Contains reconstructed error vector from localized SCP problem
-        self.p_est = [agents[i].get_pos() for i in range(self.num_agents)]              # Contains reconstructed position vector
+        # self.x_star = [np.zeros((self.dim, 1)) for i in range(self.num_agents)]         # Contains reconstructed error vector from localized SCP problem
+        # self.p_est = [agents[i].get_pos() for i in range(self.num_agents)]              # Contains reconstructed position vector
         self.p_reported = [None] * self.num_agents                                      # Reported positions of agents
-        self.edges_from_adj()
+        # self.edges_from_adj()
         self.exp_meas = self.measurement_model()                                        # Expected measurements given positions and error
         self.R = deepcopy(self.R_old)                                                   # Jacobian of measurement model
         self.residuals = [None] * self.num_agents                                       # Residuals of each agent to be checked against the threshold
@@ -140,12 +148,12 @@ class Fault_Detector(Node):
             qos_profile = qos_profile_sub,
             callback_group = client_cb_group)
         
-        self.adj_matrix_sub = self.create_subscription(
-            Float32MultiArray,
-            '/px4_0/detector/adjacency',
-            self.sub_adj_matrix,
-            qos_profile = qos_profile_sub,
-            callback_group = client_cb_group)
+        # self.adj_matrix_sub = self.create_subscription(
+        #     Float32MultiArray,
+        #     '/px4_0/detector/adjacency',
+        #     self.sub_adj_matrix,
+        #     qos_profile = qos_profile_sub,
+        #     callback_group = client_cb_group)
         
         self.formation_sub = self.create_subscription(
             Float32MultiArray,
@@ -458,10 +466,10 @@ class Fault_Detector(Node):
     # Publish agent residual
     def publish_residual(self, id):
         msg = Float32()
-        msg.data = self.residuals[id]
-        self.residual_pub[id].publish(msg)
-        # if id == 2:
-        #     self.get_logger().info(f"Agent {id} - Residual\t: {self.residuals[id]}")
+        # msg.data = self.residuals[id]
+        # self.residual_pub[id].publish(msg)
+        if id == 2:
+            self.get_logger().info(f"Agent {id} - Residual\t: {self.residuals[id]}")
         return
     
 
@@ -550,6 +558,8 @@ class Fault_Detector(Node):
                 
                 # Thresholding: Check that residual is under threshold
                 this_res = np.linalg.norm(term1 + term2)
+                
+
                 self.residuals[id] = this_res
             
             # Check if:     (1) residual flag is set
@@ -557,6 +567,7 @@ class Fault_Detector(Node):
             # If either is false, solve optimization problem
             if (self.use_res_thresh) and (this_res <= ((1/self.rho) + self.alpha)): # skip optimization
                 agent.x_bar = deepcopy(-agent.x_star[id])
+                # self.get_logger().info(f"case: skip optimization")
             else:
             # Optimization: Solve minimization problem for x_bar if over threshold
                 # self.get_logger().info(f"Optimization for agent {id}")
@@ -583,6 +594,7 @@ class Fault_Detector(Node):
                 #     self.get_logger().warning(f"~ERROR~ Problem 1: Agent {id} - Optimization Status {prob1.status} @ {self.curr_iter}th iteration")
 
                 agent.x_bar = deepcopy(np.array(agent.x_cp.value).reshape((-1, 1)))
+                # self.get_logger().info(f"case: do optimization")
 
 
         ##      Minimization    - Primal Variable 2
@@ -704,7 +716,7 @@ def main():
     # Initializations
     DEBUG = False
     dim = 3
-    num_agents = 10
+    num_agents = 7
     Agents = [None] * num_agents
     # Formation =     [
     #                  np.array([[3.0*np.cos(np.pi/180*0),     3.0*np.sin(np.pi/180*0),    0]]).T,
@@ -722,26 +734,26 @@ def main():
     #                  np.array([[-2.0, -2.0,  0.5]]).T,
     #                  np.array([[-2.0,  2.0,  0.5]]).T]
 
-    # Formation =     [
-    #                  np.array([[2.0*np.cos(np.pi/180*60),     2.0*np.sin(np.pi/180*60),    0.0]]).T,
-    #                  np.array([[2.0*np.cos(np.pi/180*180),    2.0*np.sin(np.pi/180*180),   0.0]]).T,
-    #                  np.array([[2.0*np.cos(np.pi/180*300),   2.0*np.sin(np.pi/180*300),  0.0]]).T,
-    #                  np.array([[1.0*np.cos(np.pi/180*0),   1.0*np.sin(np.pi/180*0),  0.0]]).T,
-    #                  np.array([[1.0*np.cos(np.pi/180*120),   1.0*np.sin(np.pi/180*120),  0.0]]).T,
-    #                  np.array([[1.0*np.cos(np.pi/180*240),   1.0*np.sin(np.pi/180*240),  0.0]]).T,
-    #                  np.array([[0.0,  0.0, 0.1]]).T]
-    
     Formation =     [
                      np.array([[2.0*np.cos(np.pi/180*60),     2.0*np.sin(np.pi/180*60),    0.0]]).T,
                      np.array([[2.0*np.cos(np.pi/180*180),    2.0*np.sin(np.pi/180*180),   0.0]]).T,
                      np.array([[2.0*np.cos(np.pi/180*300),   2.0*np.sin(np.pi/180*300),  0.0]]).T,
-                     np.array([[2.0*np.cos(np.pi/180*0),     2.0*np.sin(np.pi/180*0),    -0.25]]).T,
-                     np.array([[2.0*np.cos(np.pi/180*120),    2.0*np.sin(np.pi/180*120),   -0.25]]).T,
-                     np.array([[2.0*np.cos(np.pi/180*240),   2.0*np.sin(np.pi/180*240),  -0.25]]).T,
-                     np.array([[1.0*np.cos(np.pi/180*0),   1.0*np.sin(np.pi/180*0),  0.0]]).T,
-                     np.array([[1.0*np.cos(np.pi/180*120),   1.0*np.sin(np.pi/180*120),  0.0]]).T,
-                     np.array([[1.0*np.cos(np.pi/180*240),   1.0*np.sin(np.pi/180*240),  0.0]]).T,
+                     np.array([[1.0*np.cos(np.pi/180*0),   1.0*np.sin(np.pi/180*0),  -0.1]]).T,
+                     np.array([[1.0*np.cos(np.pi/180*120),   1.0*np.sin(np.pi/180*120),  -0.1]]).T,
+                     np.array([[1.0*np.cos(np.pi/180*240),   1.0*np.sin(np.pi/180*240),  -0.1]]).T,
                      np.array([[0.0,  0.0, 0.1]]).T]
+    
+    # Formation =     [
+    #                  np.array([[2.0*np.cos(np.pi/180*60),     2.0*np.sin(np.pi/180*60),    0.0]]).T,
+    #                  np.array([[2.0*np.cos(np.pi/180*180),    2.0*np.sin(np.pi/180*180),   0.0]]).T,
+    #                  np.array([[2.0*np.cos(np.pi/180*300),   2.0*np.sin(np.pi/180*300),  0.0]]).T,
+    #                  np.array([[2.0*np.cos(np.pi/180*0),     2.0*np.sin(np.pi/180*0),    -0.25]]).T,
+    #                  np.array([[2.0*np.cos(np.pi/180*120),    2.0*np.sin(np.pi/180*120),   -0.25]]).T,
+    #                  np.array([[2.0*np.cos(np.pi/180*240),   2.0*np.sin(np.pi/180*240),  -0.25]]).T,
+    #                  np.array([[1.0*np.cos(np.pi/180*0),   1.0*np.sin(np.pi/180*0),  0.0]]).T,
+    #                  np.array([[1.0*np.cos(np.pi/180*120),   1.0*np.sin(np.pi/180*120),  0.0]]).T,
+    #                  np.array([[1.0*np.cos(np.pi/180*240),   1.0*np.sin(np.pi/180*240),  0.0]]).T,
+    #                  np.array([[0.0,  0.0, 0.1]]).T]
 
 
     # Adjacency =     np.array([[0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
@@ -751,24 +763,24 @@ def main():
     #                           [1.0, 1.0, 1.0, 1.0, 0.0, 1.0],
     #                           [1.0, 1.0, 1.0, 1.0, 1.0, 0.0]], dtype=np.float64)
     
-    # Adjacency   =   np.array([[0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-    #                           [1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-    #                           [1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0],
-    #                           [1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0],
-    #                           [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0],
-    #                           [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0],
-    #                           [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0]], dtype=np.float64)
+    Adjacency   =   np.array([[0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                              [1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                              [1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0],
+                              [1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0],
+                              [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0],
+                              [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0],
+                              [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0]], dtype=np.float64)
     
-    Adjacency   =   np.array([[0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                              [1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                              [1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                              [1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                              [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                              [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0],
-                              [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0],
-                              [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0],
-                              [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0],
-                              [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0],], dtype=np.float64)
+    # Adjacency   =   np.array([[0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    #                           [1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    #                           [1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    #                           [1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    #                           [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    #                           [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0],
+    #                           [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0],
+    #                           [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0],
+    #                           [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0],
+    #                           [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0],], dtype=np.float64)
     
 
     # yaml_dict 	= 	yaml.safe_load(Path(os.path.join("/home/user/work/ros2_ws/src/px4-multiagent-offboard","config/mixedexp_3d_10a.yaml")).read_text())
@@ -808,43 +820,43 @@ def main():
     #                  (3,2), (4,2), (5,2),
     #                  (4,3), (5,3), (5,4)] # these edges are directed
     
-    # Edges =         [(0,1), (0,2), (0,3), 
-    #                  (0,4), (0,5), (0,6),
-    #                  (1,2), (1,3), (1,4),
-    #                  (1,5), (1,6), (2,3),
-    #                  (2,4), (2,5), (2,6),
-    #                  (3,4), (3,5), (3,6),
-    #                  (4,5), (4,6), (5,6),
-                    
-    #                  (1,0), (2,0), (3,0), 
-    #                  (4,0), (5,0), (6,0),
-    #                  (2,1), (3,1), (4,1),
-    #                  (5,1), (6,1), (3,2),
-    #                  (4,2), (5,2), (6,2),
-    #                  (4,3), (5,3), (6,3),
-    #                  (5,4), (6,4), (6,5)] # these edges are directed
-    
     Edges =         [(0,1), (0,2), (0,3), 
                      (0,4), (0,5), (0,6),
-                     (0,7), (0,8), (0,9),
                      (1,2), (1,3), (1,4),
-                     (1,5), (1,6), (1,7),
-                     (1,8), (1,9), (2,3),
+                     (1,5), (1,6), (2,3),
                      (2,4), (2,5), (2,6),
-                     (2,7), (2,8), (2,9),
                      (3,4), (3,5), (3,6),
-                     (3,7), (3,8), (3,9),
-                     (4,5), (4,6), (4,7),
-                     (4,8), (4,9), (5,6),
-                     (5,7), (5,8), (5,9),
-                     (6,7), (6,8), (6,9),
-                     (7,8), (7,9), (8,9)] # these edges are directed
+                     (4,5), (4,6), (5,6),
+                    
+                     (1,0), (2,0), (3,0), 
+                     (4,0), (5,0), (6,0),
+                     (2,1), (3,1), (4,1),
+                     (5,1), (6,1), (3,2),
+                     (4,2), (5,2), (6,2),
+                     (4,3), (5,3), (6,3),
+                     (5,4), (6,4), (6,5)] # these edges are directed
     
-    Edges_flip  =   deepcopy(Edges)
-    for idx, dir_edge in enumerate(Edges_flip):
-        Edges_flip[idx]    =   dir_edge[::-1]
+    # Edges =         [(0,1), (0,2), (0,3), 
+    #                  (0,4), (0,5), (0,6),
+    #                  (0,7), (0,8), (0,9),
+    #                  (1,2), (1,3), (1,4),
+    #                  (1,5), (1,6), (1,7),
+    #                  (1,8), (1,9), (2,3),
+    #                  (2,4), (2,5), (2,6),
+    #                  (2,7), (2,8), (2,9),
+    #                  (3,4), (3,5), (3,6),
+    #                  (3,7), (3,8), (3,9),
+    #                  (4,5), (4,6), (4,7),
+    #                  (4,8), (4,9), (5,6),
+    #                  (5,7), (5,8), (5,9),
+    #                  (6,7), (6,8), (6,9),
+    #                  (7,8), (7,9), (8,9)] # these edges are directed
+    
+    # Edges_flip  =   deepcopy(Edges)
+    # for idx, dir_edge in enumerate(Edges_flip):
+    #     Edges_flip[idx]    =   dir_edge[::-1]
 
-    Edges   =   Edges+Edges_flip
+    # Edges   =   Edges+Edges_flip
 
     # Graph
     for id, _ in enumerate(Agents): # Create agent objects with nbr and edge lists
