@@ -32,45 +32,73 @@ import os
 
 class Fault_Detector(Node):
 
-    def __init__(self, debug, dim, agents, adj_matrix):
+    def __init__(self, debug, dim):
 
         super().__init__("fault_detector")
 
 
         ##  Arguments
+        
         self.debug = debug
-        self.agents = agents
-        self.num_agents = len(agents)
-        self.adj_matrix = adj_matrix
         self.dim = dim
 
 
         ## ROS2 Parameters
+        
         # Declare
         self.declare_parameter('ros_ns', rclpy.Parameter.Type.STRING_ARRAY)
+        
         # Get
         self.model_ns = self.get_parameter('ros_ns').value
-
         for ns in self.model_ns:
             self.get_logger().info(f"ROS Namespace: {ns}")
 
 
-        ## Initialization - Specific to ROS2 Implementation
+        ## Initialization - General Parameters and Empty Variables
+        
+        # General Parameters
         self.num_agents = len(self.model_ns)
         self.timer_period = 0.5  # seconds
+        
+        # Received information
         self.centroid_pos = None
         self.agent_local_pos = [None] * self.num_agents
         self.formation_msg = [None] * self.num_agents
         self.spawn_offset_pos = [None] * self.num_agents
+        
+        # Agents and Network
+        self.agents = [None] * self.num_agents
+        for id, _ in enumerate(self.agents):
+            this_agent = MyAgent(agent_id=id)
+            self.agents[id] = this_agent
+        self.adj_matrix = None
+        self.edge_list = None
+        self.edges_from_adj()
 
+
+        ##  Initialization - Measurements and Positions
+        
+        # Positions
+        self.p_est = [self.agents[i].get_pos() for i in range(self.num_agents)]
+        self.p_reported = [None] * self.num_agents
+        
+        # Error
+        self.x_star = [np.zeros((self.dim, 1)) for i in range(self.num_agents)]
+        # Measurements
+        self.exp_meas = self.measurement_model()
+        # Residuals
+        self.residuals = [None] * self.num_agents
+        
 
         ##  Initialization - Thresholds and Related Variables
+        
         # Check Residual for Optimization Skip
         self.use_res_thresh = False
         # Extra Residual Threshold
         self.alpha = 5.0
         # Error Threshold
         self.err_thresh = 0.6
+        
         # Dual Variable Threshold
         self.check_dual_var = False
         self.lam_lim = 2.0
@@ -78,25 +106,21 @@ class Fault_Detector(Node):
         self.lam_reset = [False] * self.num_agents
         self.mu_reset = [False] * self.num_agents
 
-        # 240728 MH revise
-        self.edges_from_adj()
-        print(self.edge_list)
-
-        self.p_est = [agents[i].get_pos() for i in range(self.num_agents)]
-        self.x_star = [np.zeros((self.dim, 1)) for i in range(self.num_agents)]
-
         # Linearized Measurement Model Threshold
-        self.check_R_diff = True
-        self.R_old = self.get_Jacobian_matrix()
+        self.check_R_diff = False
+        self.R_old = self.get_Jacobian_matrix()     # Older Jacobian of measurement model
+        self.R = deepcopy(self.R_old)               # Newer Jacobian of measurement model
         self.R_norm_diff = 0.0
         self.R_diff_thresh = 3.0
 
 
         ##  Initialization - Optimization Parameters
+        
         self.n_admm = 50
         self.curr_iter = 0
         self.rho = 0.5
-        for agent_id, agent in enumerate(agents):
+        
+        for id, agent in enumerate(self.agents):
             # CVX variables
             agent.init_x_cp(cp.Variable((self.dim, 1)))
             agent.init_w_cp(cp.Variable((self.dim, 1)), np.arange(self.num_agents))
@@ -109,17 +133,8 @@ class Fault_Detector(Node):
             agent.init_w(np.zeros((self.dim, 1)), np.arange(self.num_agents))
 
 
-        ##  Initialization - Measurements and Positions
-        # self.x_star = [np.zeros((self.dim, 1)) for i in range(self.num_agents)]         # Contains reconstructed error vector from localized SCP problem
-        # self.p_est = [agents[i].get_pos() for i in range(self.num_agents)]              # Contains reconstructed position vector
-        self.p_reported = [None] * self.num_agents                                      # Reported positions of agents
-        # self.edges_from_adj()
-        self.exp_meas = self.measurement_model()                                        # Expected measurements given positions and error
-        self.R = deepcopy(self.R_old)                                                   # Jacobian of measurement model
-        self.residuals = [None] * self.num_agents                                       # Residuals of each agent to be checked against the threshold
-
-
-        # Set publisher and subscriber quality of service profile
+        ## Set publisher and subscriber quality of service profile
+        
         qos_profile_pub = QoSProfile(
             reliability = QoSReliabilityPolicy.BEST_EFFORT,
             durability = QoSDurabilityPolicy.TRANSIENT_LOCAL,
@@ -135,6 +150,7 @@ class Fault_Detector(Node):
         )
 
         ## Define - Different Callback Groups
+        
         client_cb_group = MutuallyExclusiveCallbackGroup()
         timer_cb_group = MutuallyExclusiveCallbackGroup()
 
@@ -148,12 +164,12 @@ class Fault_Detector(Node):
             qos_profile = qos_profile_sub,
             callback_group = client_cb_group)
         
-        # self.adj_matrix_sub = self.create_subscription(
-        #     Float32MultiArray,
-        #     '/px4_0/detector/adjacency',
-        #     self.sub_adj_matrix,
-        #     qos_profile = qos_profile_sub,
-        #     callback_group = client_cb_group)
+        self.adj_matrix_sub = self.create_subscription(
+            Float32MultiArray,
+            '/px4_0/detector/adjacency',
+            self.sub_adj_matrix,
+            qos_profile = qos_profile_sub,
+            callback_group = client_cb_group)
         
         self.formation_sub = self.create_subscription(
             Float32MultiArray,
@@ -230,6 +246,7 @@ class Fault_Detector(Node):
 
 
         ##  Define: Callback Timer(s)
+        
         self.admm_update_timer = self.create_timer(self.timer_period, 
                                             # self.admm_update)
                                             self.admm_update, callback_group=timer_cb_group)
@@ -248,6 +265,8 @@ class Fault_Detector(Node):
 
         except:
             self.get_logger().info("Exception: Issue with getting Inter-Agent Measurements of drone #" + str(drone_ind))
+            
+        return
 
 
     # Sub: Local Drone Position
@@ -260,6 +279,9 @@ class Fault_Detector(Node):
             # self.get_logger().info(f"Agent {drone_ind} Local Pos: {self.agent_local_pos[drone_ind].flatten()}")
         except:
             self.get_logger().info("Exception: Issue with getting Relative Position of drone #" + str(drone_ind))
+            
+        return
+    
 
     # Sub: Spawn Offset Position
     def sub_spawn_offset_callback(self, msg, drone_ind):
@@ -271,6 +293,8 @@ class Fault_Detector(Node):
             self.spawn_offset_pos[drone_ind] = np.array([[msg.point.x], [msg.point.y], [msg.point.z]]).reshape((self.dim, -1))
         except:
             self.get_logger().info("Exception: Issue with getting the spawn offset position of drone #" + str(drone_ind))
+            
+        return
 
 
     # Sub: Formation of Swarm
@@ -281,8 +305,13 @@ class Fault_Detector(Node):
             for id, _ in enumerate(self.agents):
                 this_formation_arr = np.array(formation_arr[(id*self.dim):(self.dim*(id+1))]).reshape((self.dim, -1))
                 self.formation_msg[id] = this_formation_arr
+                self.agents[id].position = this_formation_arr
+                
+            self.p_est = [self.agents[i].get_pos() for i in range(self.num_agents)]
         except:
             self.get_logger().info("Exception: Issue with getting the formation config of the swarm")
+            
+        return
 
 
     # Sub: Virtual Leader NED Position
@@ -292,6 +321,8 @@ class Fault_Detector(Node):
             self.centroid_pos = np.array([[msg.point.x], [msg.point.y], [msg.point.z]]).reshape((self.dim, -1))
         except:
             self.get_logger().info("Exception: Issue with getting Centroid of Drone Swarm")
+        
+        return
 
     
     # Sub: Adjacency Matrix of the graph
@@ -302,6 +333,8 @@ class Fault_Detector(Node):
             self.edges_from_adj()
         except:
             self.get_logger().info("Exception: Issue with getting the adjacency matrix of the system")
+        
+        return
 
 
 
@@ -323,6 +356,11 @@ class Fault_Detector(Node):
 
     # Help: Returns true inter-agent measurements according to Phi
     def true_measurements(self):
+        # Check if edge list is set
+        if (self.edge_list is None):
+            self.get_logger().info("Cannot compute measurements - edge list not set")
+            return
+        
         true_meas = []
         
         if (self.debug): # If in debugging mode
@@ -335,14 +373,12 @@ class Fault_Detector(Node):
 
                 dist = self.distance(true_pos1, true_pos2)
                 true_meas.append(dist)
+            
             return true_meas
 
         # print(self.edge_list)
         # print('here')
         for edge in self.edge_list: # Not in debugging mode
-            # if code is called during the simulation, this part causes an error, need to debug
-            # print(edge)
-            # print(self.agents[edge[0]].measurements[edge[1]])
             try:
                 true_meas.append(self.agents[edge[0]].measurements[edge[1]])
             except:
@@ -397,6 +433,8 @@ class Fault_Detector(Node):
             new_matrix = np.vstack((new_matrix, row))
 
         self.R_norm_diff = np.linalg.norm(new_matrix - old_matrix)
+        
+        return
     
 
     # Help: Computes relative position of drones wrt centroid
@@ -415,10 +453,17 @@ class Fault_Detector(Node):
         # Assign
         self.agents[id].position = rel_pos
         self.p_reported[id] = rel_pos
+        
+        return
 
     
     # Help: Reconstructs edge list from adjacency matrix and assigns these edges to the agents and the global edge list
     def edges_from_adj(self):
+        # Check if adjacency matrix is set
+        if (self.adj_matrix is None):
+            self.get_logger().info("Cannot reconstruct edge list - adjacency matrix is not set")
+            return
+        
         new_global_edge_list = []
 
         # Iterate over rows of adjacency matrix
@@ -440,6 +485,8 @@ class Fault_Detector(Node):
         
         # Set global edge list
         self.edge_list = new_global_edge_list
+        
+        return
 
 
 
@@ -460,6 +507,7 @@ class Fault_Detector(Node):
         # Send off error
         msg.data = this_x.tolist()
         self.err_pub[id].publish(msg)
+        
         return
 
     
@@ -470,6 +518,7 @@ class Fault_Detector(Node):
         # self.residual_pub[id].publish(msg)
         if id == 2:
             self.get_logger().info(f"Agent {id} - Residual\t: {self.residuals[id]}")
+        
         return
     
 
@@ -488,6 +537,7 @@ class Fault_Detector(Node):
             sum_norm_err += np.linalg.norm(self.x_star[id].flatten() + self.agents[id].x_bar.flatten())
         msg.data = (sum_norm_err / (self.err_thresh))
         self.avg_err_pub.publish(msg)
+        
         return
         
     
@@ -496,16 +546,19 @@ class Fault_Detector(Node):
         msg = Float32()
         msg.data = 1.0#self.err_thresh #1/self.rho + self.alpha
         self.thres_pub.publish(msg)
+        
         return
     
 
     # Calls the ADMM Update Step
     def admm_update(self):
         time_stamp = Clock().now()
+        
         ##      Check           - See if variables are set before proceeding
 
         unset_var = False
-        # Check
+        
+        # Check Positions
         for id, agent in enumerate(self.agents):
             if (self.agent_local_pos[id] is None):
                 self.get_logger().info(f"A local position is not set at {id}")
@@ -517,7 +570,7 @@ class Fault_Detector(Node):
             self.get_logger().info("The centroid pos is not set")
             unset_var = True
         
-        # Return if variable is not set
+        # Return if a position variable is not set
         if unset_var:
             return
         
@@ -716,8 +769,8 @@ def main():
     # Initializations
     DEBUG = False
     dim = 3
-    num_agents = 7
-    Agents = [None] * num_agents
+    # num_agents = 7
+    # Agents = [None] * num_agents
     # Formation =     [
     #                  np.array([[3.0*np.cos(np.pi/180*0),     3.0*np.sin(np.pi/180*0),    0]]).T,
     #                  np.array([[3.0*np.cos(np.pi/180*60),    3.0*np.sin(np.pi/180*60),   0]]).T,
@@ -734,14 +787,14 @@ def main():
     #                  np.array([[-2.0, -2.0,  0.5]]).T,
     #                  np.array([[-2.0,  2.0,  0.5]]).T]
 
-    Formation =     [
-                     np.array([[2.0*np.cos(np.pi/180*60),     2.0*np.sin(np.pi/180*60),    0.0]]).T,
-                     np.array([[2.0*np.cos(np.pi/180*180),    2.0*np.sin(np.pi/180*180),   0.0]]).T,
-                     np.array([[2.0*np.cos(np.pi/180*300),   2.0*np.sin(np.pi/180*300),  0.0]]).T,
-                     np.array([[1.0*np.cos(np.pi/180*0),   1.0*np.sin(np.pi/180*0),  -0.1]]).T,
-                     np.array([[1.0*np.cos(np.pi/180*120),   1.0*np.sin(np.pi/180*120),  -0.1]]).T,
-                     np.array([[1.0*np.cos(np.pi/180*240),   1.0*np.sin(np.pi/180*240),  -0.1]]).T,
-                     np.array([[0.0,  0.0, 0.1]]).T]
+    # Formation =     [
+    #                  np.array([[2.0*np.cos(np.pi/180*60),     2.0*np.sin(np.pi/180*60),    0.0]]).T,
+    #                  np.array([[2.0*np.cos(np.pi/180*180),    2.0*np.sin(np.pi/180*180),   0.0]]).T,
+    #                  np.array([[2.0*np.cos(np.pi/180*300),   2.0*np.sin(np.pi/180*300),  0.0]]).T,
+    #                  np.array([[1.0*np.cos(np.pi/180*0),   1.0*np.sin(np.pi/180*0),  -0.1]]).T,
+    #                  np.array([[1.0*np.cos(np.pi/180*120),   1.0*np.sin(np.pi/180*120),  -0.1]]).T,
+    #                  np.array([[1.0*np.cos(np.pi/180*240),   1.0*np.sin(np.pi/180*240),  -0.1]]).T,
+    #                  np.array([[0.0,  0.0, 0.1]]).T]
     
     # Formation =     [
     #                  np.array([[2.0*np.cos(np.pi/180*60),     2.0*np.sin(np.pi/180*60),    0.0]]).T,
@@ -763,13 +816,13 @@ def main():
     #                           [1.0, 1.0, 1.0, 1.0, 0.0, 1.0],
     #                           [1.0, 1.0, 1.0, 1.0, 1.0, 0.0]], dtype=np.float64)
     
-    Adjacency   =   np.array([[0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                              [1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                              [1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0],
-                              [1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0],
-                              [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0],
-                              [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0],
-                              [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0]], dtype=np.float64)
+    # Adjacency   =   np.array([[0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    #                           [1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    #                           [1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0],
+    #                           [1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0],
+    #                           [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0],
+    #                           [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0],
+    #                           [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0]], dtype=np.float64)
     
     # Adjacency   =   np.array([[0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
     #                           [1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
@@ -820,21 +873,21 @@ def main():
     #                  (3,2), (4,2), (5,2),
     #                  (4,3), (5,3), (5,4)] # these edges are directed
     
-    Edges =         [(0,1), (0,2), (0,3), 
-                     (0,4), (0,5), (0,6),
-                     (1,2), (1,3), (1,4),
-                     (1,5), (1,6), (2,3),
-                     (2,4), (2,5), (2,6),
-                     (3,4), (3,5), (3,6),
-                     (4,5), (4,6), (5,6),
+    # Edges =         [(0,1), (0,2), (0,3), 
+    #                  (0,4), (0,5), (0,6),
+    #                  (1,2), (1,3), (1,4),
+    #                  (1,5), (1,6), (2,3),
+    #                  (2,4), (2,5), (2,6),
+    #                  (3,4), (3,5), (3,6),
+    #                  (4,5), (4,6), (5,6),
                     
-                     (1,0), (2,0), (3,0), 
-                     (4,0), (5,0), (6,0),
-                     (2,1), (3,1), (4,1),
-                     (5,1), (6,1), (3,2),
-                     (4,2), (5,2), (6,2),
-                     (4,3), (5,3), (6,3),
-                     (5,4), (6,4), (6,5)] # these edges are directed
+    #                  (1,0), (2,0), (3,0), 
+    #                  (4,0), (5,0), (6,0),
+    #                  (2,1), (3,1), (4,1),
+    #                  (5,1), (6,1), (3,2),
+    #                  (4,2), (5,2), (6,2),
+    #                  (4,3), (5,3), (6,3),
+    #                  (5,4), (6,4), (6,5)] # these edges are directed
     
     # Edges =         [(0,1), (0,2), (0,3), 
     #                  (0,4), (0,5), (0,6),
@@ -859,41 +912,41 @@ def main():
     # Edges   =   Edges+Edges_flip
 
     # Graph
-    for id, _ in enumerate(Agents): # Create agent objects with nbr and edge lists
-        this_agent = MyAgent(agent_id=id,
-                             init_position=Formation[id])
+    # for id, _ in enumerate(Agents): # Create agent objects with nbr and edge lists
+    #     this_agent = MyAgent(agent_id=id,
+    #                          init_position=Formation[id])
         
-        nbr_id_list = []
-        nbr_ptr_list = []
-        edge_list = []
+    #     nbr_id_list = []
+    #     nbr_ptr_list = []
+    #     edge_list = []
 
-        for edge_ind, edge in enumerate(Edges):
-            if id == edge[0]:
-                nbr_id_list.append(edge[1])
-                edge_list.append(edge_ind)
+    #     for edge_ind, edge in enumerate(Edges):
+    #         if id == edge[0]:
+    #             nbr_id_list.append(edge[1])
+    #             edge_list.append(edge_ind)
         
-        this_agent.set_neighbors(nbr_id_list)
-        this_agent.set_edge_indices(edge_list)
+    #     this_agent.set_neighbors(nbr_id_list)
+    #     this_agent.set_edge_indices(edge_list)
         
-        Agents[id] = this_agent
+    #     Agents[id] = this_agent
 
-    # Add error vector
-    if DEBUG:
-        faulty_id   =   np.random.randint(0, high=num_agents)
-        fault_vec   =   0.5*np.random.rand(dim, 1) # np.array([[0.0, 0, 0]]).T #
-        Agents[faulty_id].faulty = True
-        Agents[faulty_id].error_vector = fault_vec
-        print("\n\n================================================================")
-        print(f"Faulty Agent:   {faulty_id}")
-        print(f"Faulty Vector:  {fault_vec.flatten()}")
-        for id, pos in enumerate(Formation):
-            print(f" -> Agent {id} True Pos: {pos.flatten()}")
-        print("================================================================\n\n")
+    # # Add error vector
+    # if DEBUG:
+    #     faulty_id   =   np.random.randint(0, high=num_agents)
+    #     fault_vec   =   0.5*np.random.rand(dim, 1) # np.array([[0.0, 0, 0]]).T #
+    #     Agents[faulty_id].faulty = True
+    #     Agents[faulty_id].error_vector = fault_vec
+    #     print("\n\n================================================================")
+    #     print(f"Faulty Agent:   {faulty_id}")
+    #     print(f"Faulty Vector:  {fault_vec.flatten()}")
+    #     for id, pos in enumerate(Formation):
+    #         print(f" -> Agent {id} True Pos: {pos.flatten()}")
+    #     print("================================================================\n\n")
 
     
     # Node init
     rclpy.init(args=None)
-    fault_detector = Fault_Detector(debug=DEBUG, dim=dim, agents=Agents, adj_matrix=Adjacency)
+    fault_detector = Fault_Detector(debug=DEBUG, dim=dim)#, agents=Agents, adj_matrix=Adjacency)
     # interagent_measurer.get_logger().info("Initialized")
     executer = MultiThreadedExecutor()
     executer.add_node(fault_detector)
@@ -903,14 +956,15 @@ def main():
         # rclpy.spin(fault_detector)
         executer.spin()
     except KeyboardInterrupt:
-        if (DEBUG):
-            print("\n\nKeyboardInterrupt Called")
-            print("\n\n================================================================")
-            print(f"Faulty Agent:   {faulty_id}")
-            print(f"Faulty Vector:  {fault_vec.flatten()}")
-            for id, pos in enumerate(Formation):
-                print(f" -> Agent {id} True Pos: {pos.flatten()}")
-            print("================================================================\n\n")
+        print("\n ~~~ Keyboard Interrupt Called ~~~")
+        # if (DEBUG):
+        #     print("\n\nKeyboardInterrupt Called")
+        #     print("\n\n================================================================")
+        #     print(f"Faulty Agent:   {faulty_id}")
+        #     print(f"Faulty Vector:  {fault_vec.flatten()}")
+        #     for id, pos in enumerate(Formation):
+        #         print(f" -> Agent {id} True Pos: {pos.flatten()}")
+        #     print("================================================================\n\n")
 
     # Explicitly destroy node
     fault_detector.destroy_node()
