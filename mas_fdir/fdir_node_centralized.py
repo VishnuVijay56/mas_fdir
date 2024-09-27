@@ -567,7 +567,7 @@ class Fault_Detector(Node):
 
         unset_var = False
         
-        # Check Positions
+        # Check Positions and Network
         for id, agent in enumerate(self.agents):
             if (self.agent_local_pos[id] is None):
                 self.get_logger().info(f"A local position is not set at {id}")
@@ -577,6 +577,12 @@ class Fault_Detector(Node):
                 unset_var = True
         if self.centroid_pos is None:
             self.get_logger().info("The centroid pos is not set")
+            unset_var = True
+        if self.adj_matrix is None:
+            self.get_logger().info("The adjacency matrix is not set")
+            unset_var = True
+        if self.edge_list is None:
+            self.get_logger().info("The edge list is not set")
             unset_var = True
         
         # Return if a position variable is not set
