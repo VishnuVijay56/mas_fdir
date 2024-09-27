@@ -116,7 +116,7 @@ class Fault_Detector(Node):
 
         ##  Initialization - Optimization Parameters
         
-        self.n_admm = 50
+        self.n_admm = 20
         self.curr_iter = 0
         self.rho = 0.5
         
@@ -342,6 +342,11 @@ class Fault_Detector(Node):
 
     # Help: Returns expected inter-agent measurements given position estimate and reconstructed error
     def measurement_model(self):
+        # Check if edge list is set
+        if (self.edge_list is None):
+            self.get_logger().info("Cannot compute measurement model - edge list not set")
+            return None
+        
         est_meas = []
 
         for edge in self.edge_list:
