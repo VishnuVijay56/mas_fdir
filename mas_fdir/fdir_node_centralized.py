@@ -413,8 +413,12 @@ class Fault_Detector(Node):
 
     # Help: Computes whole R matrix
     def get_Jacobian_matrix(self):
+        # Check if edge list is set
+        if (self.edge_list is None):
+            self.get_logger().info("Cannot compute Jacobian matrix - edge list is not set")
+            return None
+             
         R = []
-
         for edge_ind, edge in enumerate(self.edge_list):
             R.append(self.get_Jacobian_row(edge))
         
