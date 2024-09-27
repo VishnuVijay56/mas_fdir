@@ -64,6 +64,7 @@ class Fault_Detector(Node):
         self.centroid_pos = None
         self.agent_local_pos = [None] * self.num_agents
         self.formation_msg = [None] * self.num_agents
+        self.formation_change = False
         self.spawn_offset_pos = [None] * self.num_agents
         
         # Agents and Network
@@ -79,7 +80,7 @@ class Fault_Detector(Node):
         ##  Initialization - Measurements and Positions
         
         # Positions
-        self.p_est = [None] * self.num_agents
+        self.p_est = [self.agents[i].get_pos() for i in range(self.num_agents)]
         self.p_reported = [None] * self.num_agents
         
         # Error
@@ -100,8 +101,8 @@ class Fault_Detector(Node):
         self.err_thresh = 0.6
         
         # Dual Variable Threshold
-        self.check_dual_var = False
-        self.lam_lim = 2.0
+        self.check_dual_var = True
+        self.lam_lim = 1.0
         self.mu_lim = 3e-5
         self.lam_reset = [False] * self.num_agents
         self.mu_reset = [False] * self.num_agents
@@ -116,7 +117,7 @@ class Fault_Detector(Node):
 
         ##  Initialization - Optimization Parameters
         
-        self.n_admm = 20
+        self.n_admm = 10
         self.curr_iter = 0
         self.rho = 0.5
         
@@ -261,7 +262,9 @@ class Fault_Detector(Node):
         try:
             iam_array = deepcopy(np.array(msg.data).flatten())
             self.agents[drone_ind].set_measurements(iam_array)
-            #self.get_logger().info(f"{iam_array}: Agent" + str(drone_ind))
+            if drone_ind == 0:
+                self.get_logger().info(f"True: {iam_array[1:]}")
+                self.get_logger().info(f"Exp:  {self.exp_meas[0:(self.num_agents-1)]}")
 
         except:
             self.get_logger().info("Exception: Issue with getting Inter-Agent Measurements of drone #" + str(drone_ind))
@@ -305,11 +308,12 @@ class Fault_Detector(Node):
             for id, _ in enumerate(self.agents):
                 this_formation_arr = np.array(formation_arr[(id*self.dim):(self.dim*(id+1))]).reshape((self.dim, -1))
                 if not (self.formation_msg[id] == this_formation_arr).all():
-                    self.get_logger().info(f"Formation msg change for agent {id}")
+                    self.formation_change = True
+                    self.get_logger().info(f"Formation msg change for agent {id} : {this_formation_arr.flatten()}")
                 self.formation_msg[id] = this_formation_arr
-                self.agents[id].position = this_formation_arr
+                # self.agents[id].position = this_formation_arr
                 
-            self.p_est = [self.agents[i].get_pos() for i in range(self.num_agents)]
+            # self.p_est = [self.agents[i].get_pos() for i in range(self.num_agents)]
         except:
             self.get_logger().info("Exception: Issue with getting the formation config of the swarm")
             
@@ -452,19 +456,22 @@ class Fault_Detector(Node):
     # Help: Computes relative position of drones wrt centroid
     def get_rel_pos(self, id):
         # Compute
-        rel_pos = self.agent_local_pos[id] - self.centroid_pos + self.spawn_offset_pos[id]
+        rel_pos =  self.agent_local_pos[id] - self.centroid_pos + self.spawn_offset_pos[id] # self.formation_msg[id] + self.spawn_offset_pos[id] #
+
+        # Assign
+        if self.p_reported[id] is None: # Initialization of p_est var
+            self.p_est[id] = rel_pos
+        self.agents[id].position = rel_pos
+        self.p_reported[id] = rel_pos
+
         # log_message = f"Agent {id} - " + \
         #               f"\n\tRadius: {np.linalg.norm(rel_pos)}" + \
         #               f"\n\tLocal Pos\t: {self.agent_local_pos[id].flatten()}" + \
         #               f"\n\tCentroid Pos\t: {self.centroid_pos.flatten()}" + \
-        #               f"\n\tSpawn Offset\t: {self.spawn_offset_pos[id].flatten()}"                      
+        #               f"\n\tSpawn Offset\t: {self.spawn_offset_pos[id].flatten()}"
         # self.get_logger().info(log_message)
         #if id == 2:
-        #self.get_logger().info(f"Agent {id} : Rel Pos {rel_pos.flatten()}")
-
-        # Assign
-        self.agents[id].position = rel_pos
-        self.p_reported[id] = rel_pos
+        # self.get_logger().info(f"Agent {id} : Rel Pos {rel_pos.flatten()}")
         
         return
 
@@ -528,8 +535,8 @@ class Fault_Detector(Node):
         msg = Float32()
         # msg.data = self.residuals[id]
         # self.residual_pub[id].publish(msg)
-        if id == 2:
-            self.get_logger().info(f"Agent {id} - Residual\t: {self.residuals[id]}")
+        # if id == 2:
+        #     self.get_logger().info(f"Agent {id} - Residual\t: {self.residuals[id]}")
         
         return
     
@@ -581,9 +588,9 @@ class Fault_Detector(Node):
             if (self.p_est[id] is None):
                 self.get_logger().info(f"A position estimate is not set at {id}")
                 unset_var = True
-            if (self.p_reported[id] is None):
-                self.get_logger().info(f"A reported position is not set at {id}")
-                unset_var = True
+            # if (self.p_reported[id] is None):
+            #     self.get_logger().info(f"A reported position is not set at {id}")
+            #     unset_var = True
         if self.centroid_pos is None:
             self.get_logger().info("The centroid pos is not set")
             unset_var = True
@@ -618,9 +625,19 @@ class Fault_Detector(Node):
         if (self.exp_meas is None): # Return if exp measurement is not set
             self.get_logger().info("The measurement model is not set")
             self.exp_meas = self.measurement_model()
+            self.R = self.get_Jacobian_matrix()
             return
-        z = [(y[i] - self.exp_meas[i]) for i, _ in enumerate(y)]  
+        z = [(y[i] - self.exp_meas[i]) for i, _ in enumerate(y)]
 
+
+
+        ##      Print all variables
+        # self.get_logger().info(f"Adjacency Matrix = \n {self.adj_matrix}")
+        # self.get_logger().info(f"Edge List = \n {self.edge_list}")
+        # for i, _ in enumerate(z):
+        #     self.get_logger().info(f"z @ {self.edge_list[i]} = {z[i]}")
+        # for i in range(self.num_agents):
+        # self.get_logger().info(f"")
 
         ##      Minimization    - Primal Variable 1
         
@@ -678,8 +695,8 @@ class Fault_Detector(Node):
                     
                 prob1 = cp.Problem(cp.Minimize(objective), [])
                 prob1.solve(verbose=False)
-                # if prob1.status != cp.OPTIMAL:
-                #     self.get_logger().warning(f"~ERROR~ Problem 1: Agent {id} - Optimization Status {prob1.status} @ {self.curr_iter}th iteration")
+                if prob1.status != cp.OPTIMAL:
+                    self.get_logger().warning(f"~ERROR~ Problem 1: Agent {id} - Optimization Status {prob1.status} @ {self.curr_iter}th iteration")
 
                 agent.x_bar = deepcopy(np.array(agent.x_cp.value).reshape((-1, 1)))
                 # self.get_logger().info(f"case: do optimization")
@@ -706,8 +723,8 @@ class Fault_Detector(Node):
                 
             prob2 = cp.Problem(cp.Minimize(objective), [])
             prob2.solve(verbose=False)
-            #if prob2.status != cp.OPTIMAL:
-                #self.get_logger().warning(f"~ERROR~ Problem 2: Agent {id} - Optimization Status {prob2.status} @ {self.curr_iter}th iteration")
+            if prob2.status != cp.OPTIMAL:
+                self.get_logger().warning(f"~ERROR~ Problem 2: Agent {id} - Optimization Status {prob2.status} @ {self.curr_iter}th iteration")
 
             for _, nbr_id in enumerate(agent.get_neighbors()):
                 agent.w[nbr_id] = deepcopy(np.array(agent.w_cp[nbr_id].value).reshape((-1, 1)))
@@ -787,7 +804,7 @@ class Fault_Detector(Node):
         ##      End         - Publish error and residuals, increment current iteration, and return
         for id, agent in enumerate(self.agents):
             self.publish_err(id)
-            self.publish_residual(id)
+            # self.publish_residual(id)
         self.publish_threshold()
         self.publish_avg_norm_err()
 
