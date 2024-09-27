@@ -582,7 +582,13 @@ class Fault_Detector(Node):
             self.get_logger().info("The adjacency matrix is not set")
             unset_var = True
         if self.edge_list is None:
-            self.get_logger().info("The edge list is not set")
+            if self.adj_matrix is not None:
+                self.edges_from_adj()
+                self.get_logger().info("The edge list has been set")
+                self.exp_meas = self.measurement_model()
+                self.get_logger().info("The measurement model has been set")
+            else:
+                self.get_logger().info("The edge list is not set")
             unset_var = True
         
         # Return if a position variable is not set
