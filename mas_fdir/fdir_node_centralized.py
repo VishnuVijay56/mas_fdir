@@ -79,7 +79,7 @@ class Fault_Detector(Node):
         ##  Initialization - Measurements and Positions
         
         # Positions
-        self.p_est = [self.agents[i].get_pos() for i in range(self.num_agents)]
+        self.p_est = [None] * self.num_agents
         self.p_reported = [None] * self.num_agents
         
         # Error
@@ -304,6 +304,8 @@ class Fault_Detector(Node):
             formation_arr = msg.data
             for id, _ in enumerate(self.agents):
                 this_formation_arr = np.array(formation_arr[(id*self.dim):(self.dim*(id+1))]).reshape((self.dim, -1))
+                if not (self.formation_msg[id] == this_formation_arr).all():
+                    self.get_logger().info(f"Formation msg change for agent {id}")
                 self.formation_msg[id] = this_formation_arr
                 self.agents[id].position = this_formation_arr
                 
@@ -330,6 +332,7 @@ class Fault_Detector(Node):
         
         try: # Not in debugging mode
             self.adj_matrix = np.array(msg.data).reshape(self.num_agents, -1)
+            assert self.adj_matrix.shape[0] == self.adj_matrix.shape[1]
             self.edges_from_adj()
         except:
             self.get_logger().info("Exception: Issue with getting the adjacency matrix of the system")
@@ -567,7 +570,7 @@ class Fault_Detector(Node):
 
         unset_var = False
         
-        # Check Positions and Network
+        # Check Agent Position Variables
         for id, agent in enumerate(self.agents):
             if (self.agent_local_pos[id] is None):
                 self.get_logger().info(f"A local position is not set at {id}")
@@ -575,21 +578,27 @@ class Fault_Detector(Node):
             if (self.spawn_offset_pos[id] is None):
                 self.get_logger().info(f"A spawn offset is not set at {id}")
                 unset_var = True
+            if (self.p_est[id] is None):
+                self.get_logger().info(f"A position estimate is not set at {id}")
+                unset_var = True
+            if (self.p_reported[id] is None):
+                self.get_logger().info(f"A reported position is not set at {id}")
+                unset_var = True
         if self.centroid_pos is None:
             self.get_logger().info("The centroid pos is not set")
             unset_var = True
+        
+        # Check Network Variables
         if self.adj_matrix is None:
             self.get_logger().info("The adjacency matrix is not set")
             unset_var = True
         if self.edge_list is None:
-            if self.adj_matrix is not None:
+            if self.adj_matrix is not None: # Set edge list and meas model if adjacency matrix is not None
                 self.edges_from_adj()
                 self.get_logger().info("The edge list has been set")
-                self.exp_meas = self.measurement_model()
-                self.get_logger().info("The measurement model has been set")
-            else:
-                self.get_logger().info("The edge list is not set")
-            unset_var = True
+            else: # Edge list cannot be set because adjacency matrix is None
+                self.get_logger().info("The edge list cannot be set")
+                unset_var = True
         
         # Return if a position variable is not set
         if unset_var:
@@ -603,7 +612,12 @@ class Fault_Detector(Node):
         ##      Initialization  - Get the true inter-agent measurements
         self.all_meas_set = True
         y = self.true_measurements()
-        if not self.all_meas_set:
+        if (not self.all_meas_set): # Return if true measurement is not set
+            self.get_logger().info("A true measurement is not set")
+            return
+        if (self.exp_meas is None): # Return if exp measurement is not set
+            self.get_logger().info("The measurement model is not set")
+            self.exp_meas = self.measurement_model()
             return
         z = [(y[i] - self.exp_meas[i]) for i, _ in enumerate(y)]  
 
@@ -779,7 +793,7 @@ class Fault_Detector(Node):
 
         self.curr_iter += 1
         total_time  = Clock().now() - time_stamp
-        self.get_logger().info(f"ADMM time: {total_time}")
+        # self.get_logger().info(f"ADMM time: {total_time}")
         return
     
 
