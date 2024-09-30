@@ -120,6 +120,7 @@ class Fault_Detector(Node):
         self.n_admm = 10
         self.curr_iter = 0
         self.rho = 0.5
+        self.solver_thresh = 1e-8
         
         for id, agent in enumerate(self.agents):
             # CVX variables
@@ -250,7 +251,7 @@ class Fault_Detector(Node):
         
         self.admm_update_timer = self.create_timer(self.timer_period, 
                                             # self.admm_update)
-                                            self.admm_update, callback_group=timer_cb_group)
+                                            self.admm_update, callback_group=client_cb_group)
 
 
 
@@ -262,9 +263,9 @@ class Fault_Detector(Node):
         try:
             iam_array = deepcopy(np.array(msg.data).flatten())
             self.agents[drone_ind].set_measurements(iam_array)
-            if drone_ind == 0:
-                self.get_logger().info(f"True: {iam_array[1:]}")
-                self.get_logger().info(f"Exp:  {self.exp_meas[0:(self.num_agents-1)]}")
+            # if drone_ind == 0:
+            #     self.get_logger().info(f"True: {iam_array[1:]}")
+            #     self.get_logger().info(f"Exp:  {self.exp_meas[0:(self.num_agents-1)]}")
 
         except:
             self.get_logger().info("Exception: Issue with getting Inter-Agent Measurements of drone #" + str(drone_ind))
@@ -440,6 +441,9 @@ class Fault_Detector(Node):
     # Help: Computes matrix norm of the difference between old and new R matrices
     def get_Jacobian_matrix_norm_diff(self):
 
+        if (self.R is None) or (self.R_old is None):
+            self.get_logger().info("Cannot compute Jacobian matrix norm diff - R is not set")
+
         old_matrix = self.R_old[0]
         for row in self.R_old[1:]:
             old_matrix = np.vstack((old_matrix, row))
@@ -509,11 +513,29 @@ class Fault_Detector(Node):
     
     
     def formation_change_reset(self):
-        # Reset Dual Variables
+        # Skip Initial Formation
+        if (self.curr_iter == 0) and (self.formation_change):
+            self.formation_change = False
+            return
+
+        # Formation Change Message
+        self.get_logger().info(f"Formation Change Detected @ iteration {self.curr_iter}")
+
+        # Reset Agent Vars
         for id, agent in enumerate(self.agents):
             agent.init_lam(np.zeros((1, 1)), np.arange(self.num_agents))
             agent.init_mu(np.zeros((self.dim, 1)), np.arange(self.num_agents))
             agent.init_w(np.zeros((self.dim, 1)), agent.get_neighbors())
+            # Update Error Vectors
+            for list_ind, nbr_id in enumerate(agent.get_neighbors()):
+                agent.x_star[nbr_id] = agent.x_star[nbr_id] + self.agents[nbr_id].x_bar
+            
+            agent.x_star[id] = agent.x_star[id] + agent.x_bar
+            self.x_star[id] = agent.x_star[id]
+            
+            # Update position
+            self.p_est[id] = self.p_reported[id] + self.x_star[id]
+        
         
         # Relinearize
         self.exp_meas = self.measurement_model()
@@ -720,7 +742,7 @@ class Fault_Detector(Node):
                                 + agent.mu[nbr_id].T @ (constr_d))
                     
                 prob1 = cp.Problem(cp.Minimize(objective), [])
-                prob1.solve(verbose=False)
+                prob1.solve(verbose=False, eps=self.solver_thresh)
                 if prob1.status != cp.OPTIMAL:
                     self.get_logger().warning(f"~ERROR~ Problem 1: Agent {id} - Optimization Status {prob1.status} @ {self.curr_iter}th iteration")
 
@@ -748,7 +770,7 @@ class Fault_Detector(Node):
                               + agent.mu[nbr_id].T @ (constr_d))
                 
             prob2 = cp.Problem(cp.Minimize(objective), [])
-            prob2.solve(verbose=False)
+            prob2.solve(verbose=False, eps=self.solver_thresh)
             if prob2.status != cp.OPTIMAL:
                 self.get_logger().warning(f"~ERROR~ Problem 2: Agent {id} - Optimization Status {prob2.status} @ {self.curr_iter}th iteration")
 
@@ -836,7 +858,7 @@ class Fault_Detector(Node):
 
         self.curr_iter += 1
         total_time  = Clock().now() - time_stamp
-        # self.get_logger().info(f"ADMM time: {total_time}")
+        self.get_logger().info(f"ADMM time: {total_time}")
         return
     
 
