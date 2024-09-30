@@ -506,6 +506,25 @@ class Fault_Detector(Node):
         self.edge_list = new_global_edge_list
         
         return
+    
+    
+    def formation_change_reset(self):
+        # Reset Dual Variables
+        for id, agent in enumerate(self.agents):
+            agent.init_lam(np.zeros((1, 1)), np.arange(self.num_agents))
+            agent.init_mu(np.zeros((self.dim, 1)), np.arange(self.num_agents))
+            agent.init_w(np.zeros((self.dim, 1)), agent.get_neighbors())
+        
+        # Relinearize
+        self.exp_meas = self.measurement_model()
+        self.R_old = deepcopy(self.R)
+        self.R = self.get_Jacobian_matrix()
+        self.get_Jacobian_matrix_norm_diff()
+        
+        # Reset parameters
+        self.curr_iter += (self.n_admm - (self.curr_iter % self.n_admm)) + 1
+        self.formation_change = False
+        return
 
 
 
@@ -572,6 +591,13 @@ class Fault_Detector(Node):
     # Calls the ADMM Update Step
     def admm_update(self):
         time_stamp = Clock().now()
+        
+        
+        ##      Check           - See if formation was changed
+        
+        if (self.formation_change):
+            self.formation_change_reset()
+            
         
         ##      Check           - See if variables are set before proceeding
 
