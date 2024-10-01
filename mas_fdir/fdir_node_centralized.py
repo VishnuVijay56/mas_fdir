@@ -310,7 +310,7 @@ class Fault_Detector(Node):
                 this_formation_arr = np.array(formation_arr[(id*self.dim):(self.dim*(id+1))]).reshape((self.dim, -1))
                 if not (self.formation_msg[id] == this_formation_arr).all():
                     self.formation_change = True
-                    self.get_logger().info(f"Formation msg change for agent {id} : {this_formation_arr.flatten()}")
+                    # self.get_logger().info(f"Formation msg change for agent {id} : {this_formation_arr.flatten()}")
                 self.formation_msg[id] = this_formation_arr
                 # self.agents[id].position = this_formation_arr
                 
@@ -411,8 +411,8 @@ class Fault_Detector(Node):
     def get_Jacobian_row(self, edge):
         agent1_id = edge[0]
         agent2_id = edge[1]
-        pos1 = self.p_est[agent1_id] + self.x_star[agent1_id]
-        pos2 = self.p_est[agent2_id] + self.x_star[agent2_id]
+        pos1 = self.p_reported[agent1_id] + self.x_star[agent1_id]
+        pos2 = self.p_reported[agent2_id] + self.x_star[agent2_id]
         
         disp = (pos2 - pos1)
         R_k = np.zeros((1, self.dim*self.num_agents))
@@ -460,7 +460,7 @@ class Fault_Detector(Node):
     # Help: Computes relative position of drones wrt centroid
     def get_rel_pos(self, id):
         # Compute
-        rel_pos =  self.agent_local_pos[id] - self.centroid_pos + self.spawn_offset_pos[id] # self.formation_msg[id] + self.spawn_offset_pos[id] #
+        rel_pos = self.agent_local_pos[id] - self.centroid_pos + self.spawn_offset_pos[id] # self.formation_msg[id] + self.spawn_offset_pos[id] # 
 
         # Assign
         if self.p_reported[id] is None: # Initialization of p_est var
@@ -520,6 +520,15 @@ class Fault_Detector(Node):
 
         # Formation Change Message
         self.get_logger().info(f"Formation Change Detected @ iteration {self.curr_iter}")
+        for i in range(self.num_agents):
+            self.get_logger().info(f"\tAgent {i}: {self.formation_msg[i].flatten()}")
+
+        # Relinearize
+        # self.exp_meas = self.measurement_model()
+        self.R_old = deepcopy(self.R)
+        self.R = self.get_Jacobian_matrix()
+        self.get_Jacobian_matrix_norm_diff()
+
 
         # Reset Agent Vars
         for id, agent in enumerate(self.agents):
@@ -537,14 +546,8 @@ class Fault_Detector(Node):
             self.p_est[id] = self.p_reported[id] + self.x_star[id]
         
         
-        # Relinearize
-        self.exp_meas = self.measurement_model()
-        self.R_old = deepcopy(self.R)
-        self.R = self.get_Jacobian_matrix()
-        self.get_Jacobian_matrix_norm_diff()
-        
         # Reset parameters
-        self.curr_iter += (self.n_admm - (self.curr_iter % self.n_admm)) + 1
+        self.curr_iter += (self.n_admm - (self.curr_iter % self.n_admm)) + 1 # TODO: Replace with a formation reset offset
         self.formation_change = False
         return
 
@@ -858,7 +861,7 @@ class Fault_Detector(Node):
 
         self.curr_iter += 1
         total_time  = Clock().now() - time_stamp
-        self.get_logger().info(f"ADMM time: {total_time}")
+        # self.get_logger().info(f"ADMM time: {total_time}")
         return
     
 
