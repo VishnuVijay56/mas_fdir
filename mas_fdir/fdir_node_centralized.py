@@ -358,8 +358,8 @@ class Fault_Detector(Node):
         est_meas = []
 
         for edge in self.edge_list:
-            recons_pos1 = self.p_est[edge[0]] + self.x_star[edge[0]]
-            recons_pos2 = self.p_est[edge[1]] + self.x_star[edge[1]]
+            recons_pos1 = self.p_reported[edge[0]] + self.x_star[edge[0]]
+            recons_pos2 = self.p_reported[edge[1]] + self.x_star[edge[1]]
             dist = self.distance(recons_pos1, recons_pos2)
             
             est_meas.append(dist)
@@ -523,12 +523,6 @@ class Fault_Detector(Node):
         for i in range(self.num_agents):
             self.get_logger().info(f"\tAgent {i}: {self.formation_msg[i].flatten()}")
 
-        # Relinearize
-        # self.exp_meas = self.measurement_model()
-        self.R_old = deepcopy(self.R)
-        self.R = self.get_Jacobian_matrix()
-        self.get_Jacobian_matrix_norm_diff()
-
 
         # Reset Agent Vars
         for id, agent in enumerate(self.agents):
@@ -546,9 +540,16 @@ class Fault_Detector(Node):
             self.p_est[id] = self.p_reported[id] + self.x_star[id]
         
         
+        # Relinearize
+        self.R_old = deepcopy(self.R)
+        self.R = self.get_Jacobian_matrix()
+        self.get_Jacobian_matrix_norm_diff()
+        
+        
         # Reset parameters
         self.curr_iter += (self.n_admm - (self.curr_iter % self.n_admm)) + 1 # TODO: Replace with a formation reset offset
         self.formation_change = False
+        
         return
 
 
@@ -564,8 +565,7 @@ class Fault_Detector(Node):
         this_x = self.x_star[id].flatten() + self.agents[id].x_bar.flatten()
         this_x_norm = np.linalg.norm(this_x)
         this_x = np.hstack((this_x,np.array(this_x_norm/self.err_thresh)))
-        # if id == 2:
-        #     self.get_logger().info(f"Agent {id} - Error\t: {this_x}")
+
 
         # Send off error
         msg.data = this_x.tolist()
@@ -816,13 +816,8 @@ class Fault_Detector(Node):
             #self.get_logger().info(" ---> SCP Step: Relinearization, Error Vector Updating, and Primal Variable w Resetting")
 
             ##          Update          - Post ADMM Subroutine Handling
-
-            # Linearized Measurement Model
-            self.exp_meas = self.measurement_model()
-            self.R_old = deepcopy(self.R)
-            self.R = self.get_Jacobian_matrix()
-            self.get_Jacobian_matrix_norm_diff()
             
+            # Update Agent Variables
             for agent_id, agent in enumerate(self.agents): 
                 
                 # Update Error Vectors
@@ -836,8 +831,20 @@ class Fault_Detector(Node):
                 self.p_est[agent_id] = self.p_reported[agent_id] + self.x_star[agent_id]
                 # print(f" -> Agent {agent_id} Pos: {self.p_est[agent_id].flatten()}")
 
-                # Check if: (1) the norm difference in R exceed prescribed threshold OR 
-                #           (2) a reset flag for dual variables was set
+            # Reset primal variables w after relinearization
+            for agent in self.agents:
+                agent.init_w(np.zeros((self.dim, 1)), agent.get_neighbors())
+
+            # Linearized Measurement Model
+            self.exp_meas = self.measurement_model()
+            self.R_old = deepcopy(self.R)
+            self.R = self.get_Jacobian_matrix()
+            self.get_Jacobian_matrix_norm_diff()
+            
+            # Cold Start Checks
+            # Check if: (1) the norm difference in R exceed prescribed threshold OR 
+            #           (2) a reset flag for dual variables was set
+            for agent_id, agent in enumerate(self.agents):
                 if (self.check_R_diff and (self.R_norm_diff >= self.R_diff_thresh)) or \
                         (self.check_dual_var and (self.lam_reset[agent_id] or self.mu_reset[agent_id])):
                     #self.get_logger().info(f"RESET DUAL: Agent {agent_id} at Iteration {self.curr_iter}")
@@ -845,11 +852,6 @@ class Fault_Detector(Node):
                     agent.init_mu(np.zeros((self.dim, 1)), np.arange(self.num_agents))
                     self.mu_reset[agent_id] = False
                     self.lam_reset[agent_id] = False
-                    
-
-            # Reset primal variables w after relinearization
-            for agent in self.agents:
-                agent.init_w(np.zeros((self.dim, 1)), agent.get_neighbors())
 
 
         ##      End         - Publish error and residuals, increment current iteration, and return
