@@ -65,6 +65,7 @@ class Fault_Detector(Node):
         self.agent_local_pos = [None] * self.num_agents
         self.formation_msg = [None] * self.num_agents
         self.formation_change = False
+        self.formation_change_offset = 0
         self.spawn_offset_pos = [None] * self.num_agents
         
         # Agents and Network
@@ -547,7 +548,8 @@ class Fault_Detector(Node):
         
         
         # Reset parameters
-        self.curr_iter += (self.n_admm - (self.curr_iter % self.n_admm)) + 1 # TODO: Replace with a formation reset offset
+        self.formation_change_offset = (self.n_admm - (self.curr_iter % self.n_admm))
+        # self.curr_iter += (self.n_admm - (self.curr_iter % self.n_admm)) + 1
         self.formation_change = False
         
         return
@@ -812,7 +814,8 @@ class Fault_Detector(Node):
 
 
         ##      Update          - SCP Outer Loop Handling
-        if ((self.curr_iter % self.n_admm) == 0) and ((self.curr_iter - self.n_admm) >= 0):
+        if (((self.curr_iter - self.formation_change_offset) % self.n_admm) == 0) \
+            and (((self.curr_iter - self.formation_change_offset) - self.n_admm) >= 0):
             #self.get_logger().info(" ---> SCP Step: Relinearization, Error Vector Updating, and Primal Variable w Resetting")
 
             ##          Update          - Post ADMM Subroutine Handling
