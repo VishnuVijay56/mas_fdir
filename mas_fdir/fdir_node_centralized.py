@@ -648,9 +648,10 @@ class Fault_Detector(Node):
         elif (self.formation_change) and (self.formation_flag_change):
             self.formation_change_reset()
             self.formation_flag_change = False
-        else:
+        elif (not self.formation_change) and (self.formation_flag_change):
             self.get_logger().warning("Logical error with formation change handling")
-            
+            return
+
         
         ##      Check           - See if variables are set before proceeding
 
