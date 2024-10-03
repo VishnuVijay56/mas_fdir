@@ -65,6 +65,7 @@ class Fault_Detector(Node):
         self.agent_local_pos = [None] * self.num_agents
         self.formation_msg = [None] * self.num_agents
         self.formation_change = False
+        self.formation_flag_change = False
         self.formation_change_offset = 0
         self.spawn_offset_pos = [None] * self.num_agents
         
@@ -178,6 +179,13 @@ class Fault_Detector(Node):
             Float32MultiArray,
             '/px4_0/detector/formation_config',
             self.sub_formation_callback,
+            qos_profile = qos_profile_sub,
+            callback_group = client_cb_group)
+        
+        self.formation_change_sub = self.create_subscription(
+            Bool,
+            '/px4_0/detector/form_change',
+            self.sub_form_change_flag,
             qos_profile = qos_profile_sub,
             callback_group = client_cb_group)
         
@@ -309,8 +317,9 @@ class Fault_Detector(Node):
             formation_arr = msg.data
             for id, _ in enumerate(self.agents):
                 this_formation_arr = np.array(formation_arr[(id*self.dim):(self.dim*(id+1))]).reshape((self.dim, -1))
-                if not (self.formation_msg[id] == this_formation_arr).all():
-                    self.formation_change = True
+                # Set formation change flag
+                # if not (self.formation_msg[id] == this_formation_arr).all():
+                    # self.formation_change = True
                     # self.get_logger().info(f"Formation msg change for agent {id} : {this_formation_arr.flatten()}")
                 self.formation_msg[id] = this_formation_arr
                 # self.agents[id].position = this_formation_arr
@@ -344,6 +353,17 @@ class Fault_Detector(Node):
             self.get_logger().info("Exception: Issue with getting the adjacency matrix of the system")
         
         return
+    
+    # Sub: Formation Change Flag from Offboard
+    def sub_form_change_flag(self, msg):
+        
+        try: 
+            this_formation_change = msg.data
+            if this_formation_change is not self.formation_change:
+                self.formation_flag_change = True
+            self.formation_change = this_formation_change
+        except:
+            self.get_logger().info("Exception: Issue with getting formation change flag from offboard")
 
 
 
@@ -622,8 +642,14 @@ class Fault_Detector(Node):
         
         ##      Check           - See if formation was changed
         
-        if (self.formation_change):
+        if (self.formation_change) and (not self.formation_flag_change):
+            self.get_logger().info("FDIR Node is paused: Formation is being changed")
+            return
+        elif (self.formation_change) and (self.formation_flag_change):
             self.formation_change_reset()
+            self.formation_flag_change = False
+        else:
+            self.get_logger().warning("Logical error with formation change handling")
             
         
         ##      Check           - See if variables are set before proceeding
