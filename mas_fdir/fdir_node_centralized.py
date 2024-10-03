@@ -358,10 +358,16 @@ class Fault_Detector(Node):
     def sub_form_change_flag(self, msg):
         
         try: 
-            this_formation_change = msg.data
-            if this_formation_change is not self.formation_change:
+            new_formation_change_msg = msg.data
+            # Check if there is a change in formation change msg
+            if  ((new_formation_change_msg is False) and (self.formation_change is False)) or \
+                ((new_formation_change_msg is True) and (self.formation_change is True)):
+                self.formation_flag_change = False
+            else:
                 self.formation_flag_change = True
-            self.formation_change = this_formation_change
+            
+            # Store new formation change msg
+            self.formation_change = new_formation_change_msg
         except:
             self.get_logger().info("Exception: Issue with getting formation change flag from offboard")
 
