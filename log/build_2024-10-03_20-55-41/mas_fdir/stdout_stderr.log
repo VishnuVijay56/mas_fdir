@@ -1,0 +1,26 @@
+running egg_info
+writing build/mas_fdir/mas_fdir.egg-info/PKG-INFO
+writing dependency_links to build/mas_fdir/mas_fdir.egg-info/dependency_links.txt
+writing entry points to build/mas_fdir/mas_fdir.egg-info/entry_points.txt
+writing requirements to build/mas_fdir/mas_fdir.egg-info/requires.txt
+writing top-level names to build/mas_fdir/mas_fdir.egg-info/top_level.txt
+reading manifest file 'build/mas_fdir/mas_fdir.egg-info/SOURCES.txt'
+writing manifest file 'build/mas_fdir/mas_fdir.egg-info/SOURCES.txt'
+running build
+running build_py
+copying mas_fdir/fdir_node_centralized.py -> /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir
+running install
+running install_lib
+copying /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir/fdir_node_centralized.py -> /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir
+byte-compiling /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir/fdir_node_centralized.py to fdir_node_centralized.cpython-310.pyc
+running install_data
+running install_egg_info
+removing '/home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir-0.0.0-py3.10.egg-info' (and everything under it)
+Copying build/mas_fdir/mas_fdir.egg-info to /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir-0.0.0-py3.10.egg-info
+running install_scripts
+Installing dynamic_frames_tf2_broadcaster script to /home/user/work/ros2_ws/src/mas_fdir/install/lib/mas_fdir
+Installing fdir_node_centralized script to /home/user/work/ros2_ws/src/mas_fdir/install/lib/mas_fdir
+Installing fixed_frames_tf2_broadcaster script to /home/user/work/ros2_ws/src/mas_fdir/install/lib/mas_fdir
+Installing interagent_measurements script to /home/user/work/ros2_ws/src/mas_fdir/install/lib/mas_fdir
+Installing my_agent script to /home/user/work/ros2_ws/src/mas_fdir/install/lib/mas_fdir
+writing list of installed files to '/home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/install.log'

@@ -1,0 +1,65 @@
+[0.266s] Invoking command in '/home/user/work/ros2_ws/src/mas_fdir': PYTHONPATH=/home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base build/mas_fdir build --build-base /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build install --record /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/install.log --single-version-externally-managed install_data
+[0.367s] running egg_info
+[0.367s] creating build/mas_fdir/mas_fdir.egg-info
+[0.367s] writing build/mas_fdir/mas_fdir.egg-info/PKG-INFO
+[0.367s] writing dependency_links to build/mas_fdir/mas_fdir.egg-info/dependency_links.txt
+[0.367s] writing entry points to build/mas_fdir/mas_fdir.egg-info/entry_points.txt
+[0.367s] writing requirements to build/mas_fdir/mas_fdir.egg-info/requires.txt
+[0.367s] writing top-level names to build/mas_fdir/mas_fdir.egg-info/top_level.txt
+[0.367s] writing manifest file 'build/mas_fdir/mas_fdir.egg-info/SOURCES.txt'
+[0.368s] reading manifest file 'build/mas_fdir/mas_fdir.egg-info/SOURCES.txt'
+[0.369s] writing manifest file 'build/mas_fdir/mas_fdir.egg-info/SOURCES.txt'
+[0.369s] running build
+[0.369s] running build_py
+[0.369s] creating /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build
+[0.369s] creating /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib
+[0.369s] creating /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir
+[0.369s] copying mas_fdir/visualizer.py -> /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir
+[0.369s] copying mas_fdir/fdir_node_centralized.py -> /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir
+[0.369s] copying mas_fdir/my_agent.py -> /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir
+[0.369s] copying mas_fdir/__init__.py -> /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir
+[0.369s] copying mas_fdir/dynamic_frames_tf2_broadcaster.py -> /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir
+[0.369s] copying mas_fdir/interagent_measurements.py -> /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir
+[0.369s] copying mas_fdir/fdir_node_distributed.py -> /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir
+[0.369s] copying mas_fdir/fixed_frames_tf2_broadcaster.py -> /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir
+[0.369s] running install
+[0.369s] running install_lib
+[0.369s] creating /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir
+[0.369s] copying /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir/visualizer.py -> /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir
+[0.369s] copying /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir/fdir_node_centralized.py -> /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir
+[0.370s] copying /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir/my_agent.py -> /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir
+[0.370s] copying /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir/__init__.py -> /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir
+[0.370s] copying /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir/dynamic_frames_tf2_broadcaster.py -> /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir
+[0.370s] copying /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir/interagent_measurements.py -> /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir
+[0.370s] copying /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir/fdir_node_distributed.py -> /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir
+[0.370s] copying /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir/fixed_frames_tf2_broadcaster.py -> /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir
+[0.370s] byte-compiling /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir/visualizer.py to visualizer.cpython-310.pyc
+[0.370s] byte-compiling /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir/fdir_node_centralized.py to fdir_node_centralized.cpython-310.pyc
+[0.373s] byte-compiling /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir/my_agent.py to my_agent.cpython-310.pyc
+[0.373s] byte-compiling /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir/__init__.py to __init__.cpython-310.pyc
+[0.373s] byte-compiling /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir/dynamic_frames_tf2_broadcaster.py to dynamic_frames_tf2_broadcaster.cpython-310.pyc
+[0.373s] byte-compiling /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir/interagent_measurements.py to interagent_measurements.cpython-310.pyc
+[0.374s] byte-compiling /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir/fdir_node_distributed.py to fdir_node_distributed.cpython-310.pyc
+[0.374s] byte-compiling /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir/fixed_frames_tf2_broadcaster.py to fixed_frames_tf2_broadcaster.cpython-310.pyc
+[0.374s] running install_data
+[0.375s] creating /home/user/work/ros2_ws/src/mas_fdir/install/share/ament_index
+[0.375s] creating /home/user/work/ros2_ws/src/mas_fdir/install/share/ament_index/resource_index
+[0.375s] creating /home/user/work/ros2_ws/src/mas_fdir/install/share/ament_index/resource_index/packages
+[0.375s] copying resource/mas_fdir -> /home/user/work/ros2_ws/src/mas_fdir/install/share/ament_index/resource_index/packages
+[0.375s] copying package.xml -> /home/user/work/ros2_ws/src/mas_fdir/install/share/mas_fdir
+[0.375s] creating /home/user/work/ros2_ws/src/mas_fdir/install/share/mas_fdir/launch
+[0.375s] copying launch/fdir_mixed_launch.py -> /home/user/work/ros2_ws/src/mas_fdir/install/share/mas_fdir/launch/
+[0.375s] copying launch/foxglove_bridge.launch -> /home/user/work/ros2_ws/src/mas_fdir/install/share/mas_fdir/launch/
+[0.375s] copying launch/fdir_mixed_sitl_launch.py -> /home/user/work/ros2_ws/src/mas_fdir/install/share/mas_fdir/launch/
+[0.375s] copying launch/fdir_sitl_launch.py -> /home/user/work/ros2_ws/src/mas_fdir/install/share/mas_fdir/launch/
+[0.375s] copying launch/fdir_mixed_exp_launch.py -> /home/user/work/ros2_ws/src/mas_fdir/install/share/mas_fdir/launch/
+[0.375s] running install_egg_info
+[0.376s] Copying build/mas_fdir/mas_fdir.egg-info to /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir-0.0.0-py3.10.egg-info
+[0.376s] running install_scripts
+[0.386s] Installing dynamic_frames_tf2_broadcaster script to /home/user/work/ros2_ws/src/mas_fdir/install/lib/mas_fdir
+[0.386s] Installing fdir_node_centralized script to /home/user/work/ros2_ws/src/mas_fdir/install/lib/mas_fdir
+[0.386s] Installing fixed_frames_tf2_broadcaster script to /home/user/work/ros2_ws/src/mas_fdir/install/lib/mas_fdir
+[0.386s] Installing interagent_measurements script to /home/user/work/ros2_ws/src/mas_fdir/install/lib/mas_fdir
+[0.386s] Installing my_agent script to /home/user/work/ros2_ws/src/mas_fdir/install/lib/mas_fdir
+[0.386s] writing list of installed files to '/home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/install.log'
+[0.397s] Invoked command in '/home/user/work/ros2_ws/src/mas_fdir' returned '0': PYTHONPATH=/home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base build/mas_fdir build --build-base /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build install --record /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/install.log --single-version-externally-managed install_data

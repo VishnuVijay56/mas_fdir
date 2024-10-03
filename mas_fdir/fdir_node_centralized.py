@@ -99,7 +99,7 @@ class Fault_Detector(Node):
         # Extra Residual Threshold
         self.alpha = 5.0
         # Error Threshold
-        self.err_thresh = 0.6
+        self.err_thresh = 1.0#0.6
         
         # Dual Variable Threshold
         self.check_dual_var = True
@@ -120,7 +120,7 @@ class Fault_Detector(Node):
         
         self.n_admm = 10
         self.curr_iter = 0
-        self.rho = 0.5
+        self.rho = 0.2
         self.solver_thresh = 1e-8
         
         for id, agent in enumerate(self.agents):
@@ -521,8 +521,8 @@ class Fault_Detector(Node):
 
         # Formation Change Message
         self.get_logger().info(f"Formation Change Detected @ iteration {self.curr_iter}")
-        for i in range(self.num_agents):
-            self.get_logger().info(f"\tAgent {i}: {self.formation_msg[i].flatten()}")
+        # for i in range(self.num_agents):
+        #     self.get_logger().info(f"\tAgent {i}: {self.formation_msg[i].flatten()}")
 
 
         # Reset Agent Vars

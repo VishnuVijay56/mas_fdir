@@ -1,0 +1,28 @@
+[0.317s] Invoking command in '/home/user/work/ros2_ws/src/mas_fdir': PYTHONPATH=/home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base build/mas_fdir build --build-base /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build install --record /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/install.log --single-version-externally-managed install_data
+[0.430s] running egg_info
+[0.430s] writing build/mas_fdir/mas_fdir.egg-info/PKG-INFO
+[0.430s] writing dependency_links to build/mas_fdir/mas_fdir.egg-info/dependency_links.txt
+[0.430s] writing entry points to build/mas_fdir/mas_fdir.egg-info/entry_points.txt
+[0.430s] writing requirements to build/mas_fdir/mas_fdir.egg-info/requires.txt
+[0.430s] writing top-level names to build/mas_fdir/mas_fdir.egg-info/top_level.txt
+[0.431s] reading manifest file 'build/mas_fdir/mas_fdir.egg-info/SOURCES.txt'
+[0.432s] writing manifest file 'build/mas_fdir/mas_fdir.egg-info/SOURCES.txt'
+[0.432s] running build
+[0.432s] running build_py
+[0.432s] copying mas_fdir/fdir_node_centralized.py -> /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir
+[0.432s] running install
+[0.433s] running install_lib
+[0.433s] copying /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build/lib/mas_fdir/fdir_node_centralized.py -> /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir
+[0.433s] byte-compiling /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir/fdir_node_centralized.py to fdir_node_centralized.cpython-310.pyc
+[0.436s] running install_data
+[0.436s] running install_egg_info
+[0.437s] removing '/home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir-0.0.0-py3.10.egg-info' (and everything under it)
+[0.437s] Copying build/mas_fdir/mas_fdir.egg-info to /home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages/mas_fdir-0.0.0-py3.10.egg-info
+[0.437s] running install_scripts
+[0.450s] Installing dynamic_frames_tf2_broadcaster script to /home/user/work/ros2_ws/src/mas_fdir/install/lib/mas_fdir
+[0.450s] Installing fdir_node_centralized script to /home/user/work/ros2_ws/src/mas_fdir/install/lib/mas_fdir
+[0.450s] Installing fixed_frames_tf2_broadcaster script to /home/user/work/ros2_ws/src/mas_fdir/install/lib/mas_fdir
+[0.450s] Installing interagent_measurements script to /home/user/work/ros2_ws/src/mas_fdir/install/lib/mas_fdir
+[0.450s] Installing my_agent script to /home/user/work/ros2_ws/src/mas_fdir/install/lib/mas_fdir
+[0.450s] writing list of installed files to '/home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/install.log'
+[0.464s] Invoked command in '/home/user/work/ros2_ws/src/mas_fdir' returned '0': PYTHONPATH=/home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/user/work/ros2_ws/src/mas_fdir/install/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated setup.py egg_info --egg-base build/mas_fdir build --build-base /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/build install --record /home/user/work/ros2_ws/src/mas_fdir/build/mas_fdir/install.log --single-version-externally-managed install_data

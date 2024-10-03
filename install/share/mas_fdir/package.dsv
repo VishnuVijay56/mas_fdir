@@ -1,0 +1,6 @@
+source;share/mas_fdir/hook/pythonpath.ps1
+source;share/mas_fdir/hook/pythonpath.dsv
+source;share/mas_fdir/hook/pythonpath.sh
+source;share/mas_fdir/hook/ament_prefix_path.ps1
+source;share/mas_fdir/hook/ament_prefix_path.dsv
+source;share/mas_fdir/hook/ament_prefix_path.sh
