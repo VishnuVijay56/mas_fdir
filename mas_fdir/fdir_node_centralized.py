@@ -103,9 +103,9 @@ class Fault_Detector(Node):
         self.err_thresh = 1.0#0.6
         
         # Dual Variable Threshold
-        self.check_dual_var = True
-        self.lam_lim = 1.0
-        self.mu_lim = 3e-5
+        self.check_dual_var = False
+        self.lam_lim = 15
+        self.mu_lim = 3e-2
         self.lam_reset = [False] * self.num_agents
         self.mu_reset = [False] * self.num_agents
 
@@ -121,7 +121,7 @@ class Fault_Detector(Node):
         
         self.n_admm = 10
         self.curr_iter = 0
-        self.rho = 0.2
+        self.rho = 0.75
         self.solver_thresh = 1e-8
         
         for id, agent in enumerate(self.agents):
