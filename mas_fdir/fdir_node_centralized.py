@@ -633,9 +633,9 @@ class Fault_Detector(Node):
         
     
     # Publish residual threshold
-    def publish_threshold(self):
+    def publish_threshold(self, thresh):
         msg = Float32()
-        msg.data = 1.0#self.err_thresh #1/self.rho + self.alpha
+        msg.data = thresh #self.err_thresh #1/self.rho + self.alpha
         self.thres_pub.publish(msg)
         
         return
@@ -648,12 +648,15 @@ class Fault_Detector(Node):
         
         ##      Check           - See if formation was changed
         
+        # (True, False)
         if (self.formation_change) and (not self.formation_flag_change):
             self.get_logger().info("FDIR Node is paused: Formation is being changed")
             return
+        # (True, True)
         elif (self.formation_change) and (self.formation_flag_change):
             self.formation_change_reset()
             self.formation_flag_change = False
+        # (False, True)
         elif (not self.formation_change) and (self.formation_flag_change):
             self.get_logger().warning("Logical error with formation change handling")
             return
@@ -847,9 +850,12 @@ class Fault_Detector(Node):
 
 
         ##      Update          - SCP Outer Loop Handling
+        
+        relinearizing = False
         if (((self.curr_iter - self.formation_change_offset) % self.n_admm) == 0) \
             and (((self.curr_iter - self.formation_change_offset) - self.n_admm) >= 0):
             #self.get_logger().info(" ---> SCP Step: Relinearization, Error Vector Updating, and Primal Variable w Resetting")
+            relinearizing = True
 
             ##          Update          - Post ADMM Subroutine Handling
             
@@ -867,8 +873,7 @@ class Fault_Detector(Node):
                 self.p_est[agent_id] = self.p_reported[agent_id] + self.x_star[agent_id]
                 # print(f" -> Agent {agent_id} Pos: {self.p_est[agent_id].flatten()}")
 
-            # Reset primal variables w after relinearization
-            for agent in self.agents:
+                # Reset primal variables w with relinearization
                 agent.init_w(np.zeros((self.dim, 1)), agent.get_neighbors())
 
             # Linearized Measurement Model
@@ -891,10 +896,15 @@ class Fault_Detector(Node):
 
 
         ##      End         - Publish error and residuals, increment current iteration, and return
+        
         for id, agent in enumerate(self.agents):
             self.publish_err(id)
             # self.publish_residual(id)
-        self.publish_threshold()
+        if relinearizing:
+            self.publish_threshold(0.0)
+        else:
+            self.publish_threshold(1.0)
+            
         self.publish_avg_norm_err()
 
         self.curr_iter += 1
