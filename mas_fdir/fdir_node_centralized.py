@@ -119,7 +119,7 @@ class Fault_Detector(Node):
 
         ##  Initialization - Optimization Parameters
         
-        self.n_admm = 10
+        self.n_admm = 15
         self.curr_iter = 0
         self.rho = 0.75
         self.solver_thresh = 1e-8
@@ -246,13 +246,13 @@ class Fault_Detector(Node):
             self.err_pub[i] = self.create_publisher(
                 Float32MultiArray,
                 pub_err_name,
-                qos_profile_pub)
+                qos_profile = qos_profile_pub)
             
             pub_res_name = f"/{name_space}/detector/residual"
             self.residual_pub[i] = self.create_publisher(
                 Float32,
                 pub_res_name,
-                qos_profile_pub
+                qos_profile = qos_profile_pub
             )
 
 
@@ -260,7 +260,7 @@ class Fault_Detector(Node):
         
         self.admm_update_timer = self.create_timer(self.timer_period, 
                                             # self.admm_update)
-                                            self.admm_update, callback_group=client_cb_group)
+                                            self.admm_update, callback_group=timer_cb_group)
 
 
 
@@ -858,7 +858,7 @@ class Fault_Detector(Node):
             relinearizing = True
 
             ##          Update          - Post ADMM Subroutine Handling
-            
+
             # Update Agent Variables
             for agent_id, agent in enumerate(self.agents): 
                 
@@ -876,11 +876,17 @@ class Fault_Detector(Node):
                 # Reset primal variables w with relinearization
                 agent.init_w(np.zeros((self.dim, 1)), agent.get_neighbors())
 
+                # Reset x_bar
+                agent.x_bar = np.zeros((self.dim, 1))
+
+
+
             # Linearized Measurement Model
             self.exp_meas = self.measurement_model()
             self.R_old = deepcopy(self.R)
             self.R = self.get_Jacobian_matrix()
             self.get_Jacobian_matrix_norm_diff()
+            
             
             # Cold Start Checks
             # Check if: (1) the norm difference in R exceed prescribed threshold OR 
